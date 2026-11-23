@@ -22,8 +22,8 @@ jobs:
       - uses: EmbarkStudios/cargo-deny-action@v2
   audit:
     runs-on: ubuntu-latest
-    permissions: { contents: read, checks: write }
     steps:
       - uses: actions/checkout@v4
-      - uses: rustsec/audit-check@v2
-        with: { token: "${{ secrets.GITHUB_TOKEN }}" }
+      - uses: taiki-e/install-action@v2
+        with: { tool: cargo-audit }
+      - run: cargo audit
