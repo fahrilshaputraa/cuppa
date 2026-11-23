@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Progressive enhancement only: every page works without this file. No inline script (strict CSP).
+const EN = document.documentElement.lang === "en";
 const rp = (n) => "Rp" + Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 
 function recalc(form) {
@@ -13,7 +14,7 @@ function recalc(form) {
     count += q;
   });
   const out = form.querySelector("[data-cart-total]");
-  if (out) out.textContent = count ? `${count} item · ${rp(sum)}` : "Belum ada item";
+  if (out) out.textContent = count ? `${count} item${EN && count > 1 ? "s" : ""} · ${rp(sum)}` : (EN ? "No items yet" : "Belum ada item");
   const btn = form.querySelector("[data-cart-submit]");
   if (btn) btn.disabled = count === 0 || "locked" in btn.dataset;
 }

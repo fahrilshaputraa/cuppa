@@ -1,0 +1,16 @@
+{% extends "app.html" %}
+{% block title %}Tampilan{% endblock %}
+{% block body %}
+<div class="page-head"><h1>Tampilan halaman pelanggan</h1></div>
+{% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
+{% if let Some(n) = notice %}<div class="notice" role="status">{{ n }}</div>{% endif %}
+<p class="muted">Cuppa tidak pernah menjalankan kode dari pengguna. CSS disaring: hanya properti tampilan dasar (warna, ukuran huruf, jarak, sudut) dan hanya memengaruhi halaman pelanggan. HTML hanya boleh teks sederhana dan tautan https.</p>
+<form class="panel" method="post" action="/owner/appearance">
+  <h3>Pengumuman di atas menu</h3>
+  <div class="field"><label for="ah">HTML sederhana (p, strong, em, br, ul, li, a)</label><textarea id="ah" name="html" rows="4" maxlength="2000" placeholder="&lt;p&gt;&lt;strong&gt;Promo hari ini:&lt;/strong&gt; beli 2 gratis kue&lt;/p&gt;">{{ html }}</textarea></div>
+  <h3>CSS kustom</h3>
+  <div class="field"><label for="ac">Aturan (contoh: <code>h1 { color: #2e6b4b; }</code>)</label><textarea id="ac" name="css" rows="8" maxlength="8000" spellcheck="false">{{ css }}</textarea></div>
+  <p class="muted small">Properti yang didukung: color, background-color, font-size, font-weight, font-family, letter-spacing, line-height, text-align, border*, padding*, margin*, max-width, opacity. <code>url()</code>, <code>@import</code>, dan skrip dibuang.</p>
+  <button class="btn primary" type="submit">Simpan</button>
+</form>
+{% endblock %}

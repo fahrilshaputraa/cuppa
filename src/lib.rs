@@ -7,10 +7,12 @@ pub mod auth;
 pub mod backup;
 pub mod clock;
 pub mod config;
+pub mod custom;
 pub mod db;
 pub mod error;
 pub mod escpos;
 pub mod handlers;
+pub mod i18n;
 pub mod money;
 pub mod rand_id;
 pub mod secrets;
@@ -93,6 +95,58 @@ async fn offline(State(st): State<AppState>) -> error::AppResult<axum::response:
     })
 }
 
+/// English for public pages when the visitor chose it (cookie `lang=en`). Staff screens are never touched.
+async fn language(req: axum::extract::Request, next: middleware::Next) -> axum::response::Response {
+    let path = req.uri().path().to_string();
+    let english = auth::cookie_value(req.headers(), "lang") == Some("en");
+    let public = path.starts_with("/m/")
+        || path.starts_with("/r/")
+        || path == "/display"
+        || path == "/display/part"
+        || path == "/offline";
+    let res = next.run(req).await;
+    if !(english && public) {
+        return res;
+    }
+    let is_html = res
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.starts_with("text/html"));
+    if !is_html {
+        return res;
+    }
+    let (mut parts, body) = res.into_parts();
+    let Ok(bytes) = axum::body::to_bytes(body, 2 * 1024 * 1024).await else {
+        return axum::response::IntoResponse::into_response(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+    };
+    let out = i18n::translate_html(&String::from_utf8_lossy(&bytes));
+    parts.headers.remove(axum::http::header::CONTENT_LENGTH);
+    axum::response::Response::from_parts(parts, axum::body::Body::from(out))
+}
+
+async fn set_language(
+    axum::extract::Path(code): axum::extract::Path<String>,
+    headers: axum::http::HeaderMap,
+) -> impl axum::response::IntoResponse {
+    let code = if code == "en" { "en" } else { "id" };
+    // Go back to where the visitor was (same-origin path only), else home.
+    let back = headers
+        .get(axum::http::header::REFERER)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|r| r.split("://").nth(1))
+        .and_then(|r| r.find('/').map(|i| r[i..].to_string()))
+        .filter(|p| p.starts_with('/') && !p.starts_with("//"))
+        .unwrap_or_else(|| "/".into());
+    (
+        [(
+            axum::http::header::SET_COOKIE,
+            format!("lang={code}; SameSite=Lax; Path=/; Max-Age=31536000"),
+        )],
+        axum::response::Redirect::to(&back),
+    )
+}
+
 async fn health() -> &'static str {
     "ok"
 }
@@ -110,6 +164,7 @@ pub fn router(st: AppState) -> Router {
         .route("/m/{token}/call", post(public::call))
         .route("/r/{token}", get(receipt::public))
         .route("/display", get(public::display))
+        .route("/custom.css", get(more::custom_css))
         .route("/webhooks/midtrans", post(gateway::webhook_midtrans))
         .route("/uploads/{name}", get(more::serve_upload))
         .route("/m/{token}/orders/{id}/loyalty", post(more::loyalty_join))
@@ -171,6 +226,10 @@ pub fn router(st: AppState) -> Router {
         .route("/owner/security/disable", post(more::security_disable))
         .route("/owner/items/{id}/prices", get(more::prices_get).post(more::prices_add))
         .route("/owner/price-rules/{id}/toggle", post(more::prices_toggle))
+        .route(
+            "/owner/appearance",
+            get(more::appearance_get).post(more::appearance_post),
+        )
         .route("/cashier/floor", get(ops::floor))
         .route(
             "/owner/integrations",
@@ -221,11 +280,13 @@ pub fn router(st: AppState) -> Router {
         .merge(public)
         .merge(staff)
         .route("/healthz", get(health))
+        .route("/lang/{code}", get(set_language))
         .route("/sw.js", get(service_worker))
         .route("/offline", get(offline))
         .route("/api/v1/sales", get(ops::api_sales))
         .route("/api/v1/menu", get(ops::api_menu))
         .nest_service("/static", ServeDir::new("static"))
+        .layer(middleware::from_fn(language))
         .layer(middleware::from_fn(security::csrf))
         .layer(middleware::from_fn_with_state(st.clone(), security::headers))
         .layer(DefaultBodyLimit::max(64 * 1024))

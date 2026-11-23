@@ -866,6 +866,8 @@ async fn pages_have_no_inline_script_or_style() {
         "/cashier/history".into(),
         "/owner/vouchers".into(),
         "/owner/stations".into(),
+        "/owner/appearance".into(),
+        "/owner/integrations".into(),
         "/owner/ingredients".into(),
         "/owner/api".into(),
         "/owner/ledger".into(),
@@ -3390,4 +3392,101 @@ async fn scheduled_prices_apply_in_their_window_and_are_snapshotted() {
         .await
         .unwrap();
     assert_eq!(prices, vec![20_000, 25_000]);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Safe customisation + English
+// ---------------------------------------------------------------------------------------------
+
+#[tokio::test]
+async fn custom_css_and_banner_are_sanitised_scoped_and_owner_only() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let (token, _, cashier) = seed(&a, &owner).await;
+    assert_eq!(
+        send(&a, "GET", "/owner/appearance", Some(&cashier), None, false)
+            .await
+            .status,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        send(
+            &a,
+            "POST",
+            "/owner/appearance",
+            Some(&cashier),
+            Some("css=h1{color:red}&html=x"),
+            true
+        )
+        .await
+        .status,
+        StatusCode::FORBIDDEN
+    );
+    let css = "h1{color:%232e6b4b}@import url(https://evil.example/a.css);.price{background:url(javascript:alert(1))}</style><script>alert(1)</script>body{position:fixed}";
+    let html = "%3Cp%20onclick%3D%22x()%22%3EPromo%20%3Cstrong%3Ahari%3C%2Fstrong%3E%3C%2Fp%3E%3Cscript%3Ealert(1)%3C%2Fscript%3E%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E";
+    let r = send(
+        &a,
+        "POST",
+        "/owner/appearance",
+        Some(&owner),
+        Some(&format!("css={css}&html={html}")),
+        true,
+    )
+    .await;
+    assert!(r.body.contains("dibuang"), "{}", r.body);
+    // The public stylesheet only contains the safe rule, scoped under .cust.
+    let served = send(&a, "GET", "/custom.css", None, None, false).await;
+    assert_eq!(served.status, StatusCode::OK);
+    assert!(
+        served.headers[header::CONTENT_TYPE]
+            .to_str()
+            .unwrap()
+            .starts_with("text/css")
+    );
+    assert_eq!(served.body.trim(), ".cust h1{color:#2e6b4b}", "{}", served.body);
+    // The banner keeps harmless markup only, and the customer page links the stylesheet.
+    let page = send(&a, "GET", &format!("/m/{token}"), None, None, false).await;
+    assert!(page.body.contains("Promo") && page.body.contains("<strong>"));
+    let low = page.body.to_lowercase();
+    assert!(!low.contains("onclick") && !low.contains("onerror") && !low.contains("<img") && !low.contains("alert(1)"));
+    assert!(page.body.contains("/custom.css"));
+    // Staff pages do not load it.
+    assert!(
+        !send(&a, "GET", "/owner", Some(&owner), None, false)
+            .await
+            .body
+            .contains("/custom.css")
+    );
+    // The strict CSP is untouched: no inline style or script was introduced.
+    assert!(
+        page.headers["content-security-policy"]
+            .to_str()
+            .unwrap()
+            .contains("style-src 'self'")
+    );
+}
+
+#[tokio::test]
+async fn english_applies_to_public_pages_only_and_is_a_cookie_choice() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let (token, item, _) = seed(&a, &owner).await;
+    let id = send(&a, "GET", &format!("/m/{token}"), None, None, false).await;
+    assert!(id.body.contains("Kirim pesanan") && id.body.contains("lang=\"id\""));
+    let sw = send(&a, "GET", "/lang/en", None, None, false).await;
+    assert_eq!(sw.status, StatusCode::SEE_OTHER);
+    assert!(sw.headers[header::SET_COOKIE].to_str().unwrap().contains("lang=en"));
+    let en = send(&a, "GET", &format!("/m/{token}"), Some("lang=en"), None, false).await;
+    assert!(
+        en.body.contains("Place order") && en.body.contains("Table 1") && en.body.contains("lang=\"en\""),
+        "{}",
+        en.body
+    );
+    // Menu names and prices are untouched; tag attributes are not rewritten.
+    assert!(
+        en.body.contains("Latte") && en.body.contains("Rp25.000") && en.body.contains(&format!("name=\"qty_{item}\""))
+    );
+    // Staff screens stay Indonesian even with the cookie.
+    let staff = send(&a, "GET", "/owner", Some(&format!("{owner}; lang=en")), None, false).await;
+    assert!(staff.body.contains("Ringkasan") && staff.body.contains("lang=\"id\""));
 }

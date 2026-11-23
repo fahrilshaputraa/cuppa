@@ -779,3 +779,80 @@ pub async fn prices_toggle(State(st): State<AppState>, staff: Staff, Path(rid): 
     tx.commit().await?;
     Ok(Redirect::to(&format!("/owner/items/{menu_id}/prices")))
 }
+
+// ---- Appearance: sanitised CSS + HTML banner (FR-50) --------------------------------------------
+
+async fn appearance_page(
+    st: &AppState,
+    staff: &Staff,
+    error: Option<String>,
+    notice: Option<String>,
+) -> AppResult<Response> {
+    let (css, html): (String, String) =
+        sqlx::query_as("SELECT custom_css, custom_banner_html FROM outlet_settings WHERE id = 1")
+            .fetch_one(&st.db)
+            .await?;
+    Ok(render(AppearancePage {
+        ctx: Ctx::staff(st, staff, "appearance").await?,
+        error,
+        notice,
+        css,
+        html,
+    })?
+    .into_response())
+}
+
+pub async fn appearance_get(State(st): State<AppState>, staff: Staff) -> AppResult<Response> {
+    owner(&staff)?;
+    appearance_page(&st, &staff, None, None).await
+}
+
+#[derive(Deserialize)]
+pub struct AppearanceForm {
+    css: String,
+    html: String,
+}
+
+pub async fn appearance_post(
+    State(st): State<AppState>,
+    staff: Staff,
+    Form(f): Form<AppearanceForm>,
+) -> AppResult<Response> {
+    owner(&staff)?;
+    let (css, dropped) = crate::custom::sanitize_css(&f.css);
+    let html = crate::custom::sanitize_html(&f.html);
+    let mut tx = crate::db::begin_write(&st.db).await?;
+    sqlx::query("UPDATE outlet_settings SET custom_css = ?, custom_banner_html = ? WHERE id = 1")
+        .bind(&css)
+        .bind(&html)
+        .execute(&mut *tx)
+        .await?;
+    let detail = format!("css {} bytes, {dropped} dropped; html {} bytes", css.len(), html.len());
+    let mut e = Entry::new(Some(&staff.id), "appearance.updated", "settings", Some("1"));
+    e.detail = Some(&detail);
+    audit::record(&mut tx, e).await?;
+    tx.commit().await?;
+    let note = if dropped > 0 {
+        format!("Disimpan. {dropped} aturan/properti tidak aman atau tidak didukung dibuang.")
+    } else {
+        "Disimpan.".to_string()
+    };
+    appearance_page(&st, &staff, None, Some(note)).await
+}
+
+/// Public stylesheet with the owner's sanitised rules, all scoped under `.cust` (customer page only).
+pub async fn custom_css(State(st): State<AppState>) -> AppResult<Response> {
+    let css: String = sqlx::query_scalar("SELECT custom_css FROM outlet_settings WHERE id = 1")
+        .fetch_one(&st.db)
+        .await?;
+    // Sanitise again on the way out: stored data is never trusted to still be clean.
+    let (clean_css, _) = crate::custom::sanitize_css(&css.replace(".cust ", ""));
+    Ok((
+        [
+            (header::CONTENT_TYPE, "text/css; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-cache"),
+        ],
+        clean_css,
+    )
+        .into_response())
+}

@@ -68,7 +68,11 @@ async fn menu_page(st: &AppState, token: &str, error: Option<String>) -> AppResu
     let (_, label) = table_by_token(st, token).await?;
     let (open, hours) = open_state(st).await?;
     let busy = busy_message(st).await?;
+    let banner: String = sqlx::query_scalar("SELECT custom_banner_html FROM outlet_settings WHERE id = 1")
+        .fetch_one(&st.db)
+        .await?;
     Ok(render(CustomerMenu {
+        banner: crate::custom::sanitize_html(&banner),
         busy,
         ctx: Ctx::guest(st).await?,
         can_sold_out: false,

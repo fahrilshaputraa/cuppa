@@ -57,10 +57,11 @@ Honest status of every PRD requirement. ✅ done and tested · 🟡 partial · �
 | FR-47, 58 | ✅ | Rating per order and per menu item. |
 | FR-48 | ✅ | Busiest hours, margin per menu, automatic busy mode (threshold + extra wait). |
 | FR-49 | ✅ | Vouchers/promos and time-of-day (happy hour) prices, snapshotted on the order line. |
-| FR-50, 56 | ⏳ | Custom CSS/JS: deliberately deferred until an independent security review (the PRD itself requires it). |
+| FR-50 | ✅ | Custom CSS (allowlisted properties, values and selectors, always scoped to the customer page, re-sanitised on every serve) and a sanitised HTML banner (text, lists and https links only). Cuppa never executes owner code. |
+| FR-56 | ⏳ | Custom JS in a sandboxed iframe on a separate origin: deliberately not built until an independent security review (the PRD itself requires it). |
 | FR-51 | 🟡 | Owner 2FA (TOTP, replay-protected). Custom roles are covered by per-user permission overrides. |
 | FR-52 | ✅ | Public digital receipt link + WhatsApp share link (no WhatsApp API sending). |
-| FR-53 | 🟡 | Floor plan, merge orders, move table, call waiter, ask for the bill. Auto-translation (ID/EN) not built. |
+| FR-53 | ✅ | Floor plan, merge orders, move table, call waiter, ask for the bill, Indonesian/English switch for every customer page (text nodes only). Staff screens are Indonesian. |
 | FR-54 | ⏳ | SQLite → Postgres migration tool (depends on FR-36). |
 | FR-55 | ✅ | Delivery channels as order source (manual). |
 | FR-57 | ✅ | Opt-in loyalty with consent, points, favourite item and erasure. |

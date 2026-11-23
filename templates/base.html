@@ -10,12 +10,13 @@
 <link rel="icon" href="/static/icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
 <link rel="stylesheet" href="/static/css/app.css">
+{% if ctx.role.is_empty() %}<link rel="stylesheet" href="/custom.css">{% endif %}
 <script src="/static/vendor/htmx.min.js" defer></script>
 <script src="/static/vendor/htmx-sse.js" defer></script>
 <script src="/static/js/app.js" defer></script>
 </head>
 <body class="theme-{{ ctx.theme }}" {% if !ctx.role.is_empty() %}data-idle="600"{% endif %}>
 {% block shell %}{% endblock %}
-<div class="site-foot">Cuppa · AGPL-3.0 · <a href="https://github.com/fahrilshaputraa/cuppa" rel="noopener">Kode sumber</a></div>
+<div class="site-foot">{% if ctx.role.is_empty() %}<a href="/lang/id">Indonesia</a> · <a href="/lang/en">English</a> · {% endif %}Cuppa · AGPL-3.0 · <a href="https://github.com/fahrilshaputraa/cuppa" rel="noopener">Kode sumber</a></div>
 </body>
 </html>

@@ -404,6 +404,7 @@ pub struct ShiftPage {
 #[template(path = "customer_menu.html")]
 pub struct CustomerMenu {
     pub ctx: Ctx,
+    pub banner: String,
     pub busy: Option<String>,
     pub can_sold_out: bool,
     pub open: bool,
@@ -749,4 +750,14 @@ pub struct PricesPage {
     pub menu_name: String,
     pub list_price: String,
     pub rules: Vec<(String, String, String, String, bool)>,
+}
+
+#[derive(Template)]
+#[template(path = "owner_appearance.html")]
+pub struct AppearancePage {
+    pub ctx: Ctx,
+    pub error: Option<String>,
+    pub notice: Option<String>,
+    pub css: String,
+    pub html: String,
 }
