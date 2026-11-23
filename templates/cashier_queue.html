@@ -1,0 +1,28 @@
+{% if orders.is_empty() %}
+<div class="panel empty"><strong>Belum ada pesanan</strong>Pesanan dari QR dan input manual muncul di sini.</div>
+{% else %}
+<div class="grid cols-2">
+{% for o in orders %}
+  <article class="ticket">
+    <header>
+      <h3>#{{ o.number }} · {{ o.where_label }}</h3>
+      {% if o.status == "pending" %}<span class="chip warn">Menunggu konfirmasi</span>
+      {% else if o.status == "confirmed" %}<span class="chip neutral">Diproses</span>
+      {% else %}<span class="chip ok">Siap</span>{% endif %}
+    </header>
+    <div class="muted">{{ o.time }} · {{ o.source_label }}</div>
+    <ul>{% for l in o.lines %}<li>{{ l }}</li>{% endfor %}</ul>
+    {% if let Some(n) = o.note %}<p class="muted">Catatan: {{ n }}</p>{% endif %}
+    <div class="row between"><strong class="num">{{ o.total_fmt }}</strong>
+    <div class="row">
+      {% if o.status == "pending" %}
+        <form method="post" action="/orders/{{ o.id }}/confirm"><button class="btn primary" type="submit">Konfirmasi</button></form>
+        <form method="post" action="/orders/{{ o.id }}/reject" class="row"><input name="reason" placeholder="Alasan" required maxlength="120" aria-label="Alasan menolak"><button class="btn danger" type="submit">Tolak</button></form>
+      {% else %}
+        <a class="btn primary" href="/orders/{{ o.id }}">Bayar</a>
+      {% endif %}
+    </div></div>
+  </article>
+{% endfor %}
+</div>
+{% endif %}

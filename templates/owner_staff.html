@@ -1,0 +1,17 @@
+{% extends "app.html" %}
+{% block title %}Staf{% endblock %}
+{% block body %}
+<h1>Staf</h1>
+{% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
+<form class="panel" method="post" action="/owner/staff">
+  <h3>Tambah staf</h3>
+  <div class="field"><label for="n">Nama</label><input id="n" name="name" required maxlength="60"></div>
+  <div class="field"><label for="r">Peran</label><select id="r" name="role"><option value="cashier">Kasir</option><option value="kitchen">Dapur</option><option value="owner">Owner</option></select></div>
+  <div class="field"><label for="s">PIN (4–8 digit) / kata sandi owner</label><input id="s" name="secret" type="password" required maxlength="128" autocomplete="new-password"></div>
+  <button class="btn primary" type="submit">Tambah</button>
+</form>
+<div class="panel"><table class="ledger"><thead><tr><th>Nama</th><th>Peran</th><th>Status</th><th></th></tr></thead><tbody>
+{% for u in users %}<tr><td>{{ u.name }}</td><td>{{ u.role }}</td><td>{% if u.active == 1 %}<span class="chip ok">Aktif</span>{% else %}<span class="chip neutral">Nonaktif</span>{% endif %}</td>
+<td><form method="post" action="/owner/staff/{{ u.id }}/active"><button class="btn" type="submit">{% if u.active == 1 %}Nonaktifkan{% else %}Aktifkan{% endif %}</button></form></td></tr>{% endfor %}
+</tbody></table></div>
+{% endblock %}

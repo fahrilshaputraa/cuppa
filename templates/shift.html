@@ -1,0 +1,30 @@
+{% extends "app.html" %}
+{% block title %}Shift{% endblock %}
+{% block body %}
+<h1>Shift</h1>
+{% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
+{% if let Some(r) = report %}
+  <div class="panel"><h3>Laporan Z</h3>
+  <table class="ledger"><tbody>
+    <tr><td>Modal awal</td><td class="num">{{ r.opening }}</td></tr>
+    <tr><td>Tunai diterima</td><td class="num">{{ r.cash_sales }}</td></tr>
+    <tr><td>Seharusnya di laci</td><td class="num">{{ r.expected }}</td></tr>
+    <tr><td>Dihitung fisik</td><td class="num">{{ r.counted }}</td></tr>
+    <tr><td><strong>Selisih</strong></td><td class="num"><strong>{{ r.difference }}</strong></td></tr>
+  </tbody></table></div>
+{% endif %}
+{% if open %}
+  <form class="panel" method="post" action="/cashier/shift/close">
+    <h3>Tutup shift</h3>
+    <p class="muted">Hitung uang fisik di laci dulu. Angka sistem ditampilkan setelah Anda mengirim hitungan.</p>
+    <div class="field"><label for="c">Uang fisik di laci (Rp)</label><input id="c" name="counted" type="number" min="0" required inputmode="numeric"></div>
+    <button class="btn primary" type="submit">Tutup shift</button>
+  </form>
+{% else %}
+  <form class="panel" method="post" action="/cashier/shift/open">
+    <h3>Buka shift</h3>
+    <div class="field"><label for="o">Modal awal laci (Rp)</label><input id="o" name="opening" type="number" min="0" required inputmode="numeric"></div>
+    <button class="btn primary" type="submit">Buka shift</button>
+  </form>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Menu{% endblock %}
+{% block shell %}
+<div class="cust">
+  <h1>{{ ctx.outlet }}</h1>
+  <p class="muted">Meja {{ table_label }}</p>
+  {% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
+  <form method="post" action="/m/{{ token }}/orders">
+  {% for c in menu %}
+    <h2>{{ c.name }}</h2>
+    {% for i in c.items %}
+      <div class="menu-item {% if i.available == 0 %}soldout{% endif %}">
+        <div><strong>{{ i.name }}</strong><div class="muted num">{{ i.price_fmt }}</div>{% if i.available == 0 %}<span class="chip warn">Habis</span>{% endif %}</div>
+        <input class="qty" type="number" min="0" max="20" value="0" name="qty_{{ i.id }}" aria-label="Jumlah {{ i.name }}" {% if i.available == 0 %}disabled{% endif %}>
+      </div>
+    {% endfor %}
+  {% endfor %}
+  {% if menu.is_empty() %}<div class="empty"><strong>Menu belum tersedia</strong></div>{% endif %}
+  <div class="field"><label for="note">Catatan</label><textarea id="note" name="note" maxlength="200"></textarea></div>
+  <div class="total-bar"><span class="muted">Harga final dihitung kasir</span><button class="btn primary" type="submit">Kirim pesanan</button></div>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Masuk{% endblock %}
+{% block shell %}
+<div class="login"><form class="panel" method="post" action="/login" autocomplete="off">
+  <h1>cup<span class="brand-accent">pa</span></h1>
+  <p class="muted">{{ ctx.outlet }}</p>
+  {% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
+  <div class="field"><label for="name">Nama</label><input id="name" name="name" required maxlength="60" autofocus></div>
+  <div class="field"><label for="secret">PIN / kata sandi</label><input id="secret" name="secret" type="password" required maxlength="128" autocomplete="current-password"></div>
+  <button class="btn primary" type="submit">Masuk</button>
+</form></div>
+{% endblock %}

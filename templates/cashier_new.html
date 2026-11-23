@@ -1,0 +1,23 @@
+{% extends "app.html" %}
+{% block title %}Pesanan baru{% endblock %}
+{% block body %}
+<h1>Pesanan baru</h1>
+{% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
+<form method="post" action="/cashier/new">
+  <div class="panel">
+  {% if menu.is_empty() %}<div class="empty"><strong>Menu kosong</strong>Minta owner menambah menu.</div>{% endif %}
+  {% for c in menu %}
+    <h3>{{ c.name }}</h3>
+    {% for i in c.items %}
+      <div class="menu-item {% if i.available == 0 %}soldout{% endif %}">
+        <div><strong>{{ i.name }}</strong><div class="muted num">{{ i.price_fmt }}</div></div>
+        <input class="qty" type="number" min="0" max="99" value="0" name="qty_{{ i.id }}" aria-label="Jumlah {{ i.name }}" {% if i.available == 0 %}disabled{% endif %}>
+      </div>
+    {% endfor %}
+  {% endfor %}
+  </div>
+  <div class="panel"><div class="field"><label for="tbl">Meja (opsional)</label><select id="tbl" name="table_id"><option value="">Bawa pulang / antre</option>{% for t in tables %}<option value="{{ t.id }}">Meja {{ t.label }}</option>{% endfor %}</select></div>
+  <div class="field"><label for="note">Catatan</label><textarea id="note" name="note" maxlength="200"></textarea></div></div>
+  <div class="total-bar"><span class="muted">Total dihitung server saat disimpan</span><button class="btn primary" type="submit">Simpan pesanan</button></div>
+</form>
+{% endblock %}

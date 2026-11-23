@@ -1,0 +1,10 @@
+{% extends "app.html" %}
+{% block title %}Kasir{% endblock %}
+{% block body %}
+<h1>Antrean pesanan</h1>
+<div hx-ext="sse" sse-connect="/events">
+  <div id="queue" hx-get="/cashier/queue" hx-trigger="load, sse:orders, every 20s" hx-swap="innerHTML" aria-live="polite">
+    <div class="empty">Memuat…</div>
+  </div>
+</div>
+{% endblock %}

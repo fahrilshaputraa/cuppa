@@ -1,0 +1,21 @@
+/* Design tokens — see DESIGN.md. Never hardcode values that have a token. */
+:root {
+  --paper: #F7F3EC; --surface: #FFFFFF; --surface-2: #EFE9DF; --line: #E1D8C9;
+  --ink: #221A14; --ink-2: #5F5347;
+  --accent: #A8481F; --accent-ink: #FFFFFF;
+  --ok: #2E6B4B; --warn: #9A6200; --danger: #B3261E;
+  --radius: 10px;
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px;
+  --t-xs: .75rem; --t-sm: .875rem; --t-md: 1rem; --t-lg: 1.1875rem; --t-xl: 1.4375rem; --t-2xl: 1.75rem; --t-3xl: 2.125rem;
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --tap: 44px;
+  --ease: cubic-bezier(.2,.7,.2,1);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #17120E; --surface: #201A15; --surface-2: #2A231C; --line: #3A3128;
+    --ink: #F3ECE1; --ink-2: #BFB3A3;
+    --accent: #E0773F; --accent-ink: #1A0F08;
+    --ok: #6DBB93; --warn: #E3A84B; --danger: #F08A82;
+  }
+}

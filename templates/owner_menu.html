@@ -1,0 +1,41 @@
+{% extends "app.html" %}
+{% block title %}Menu{% endblock %}
+{% block body %}
+<h1>Menu</h1>
+{% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
+<div class="grid cols-2">
+  <form class="panel" method="post" action="/owner/categories">
+    <h3>Kategori baru</h3>
+    <div class="field"><label for="cname">Nama</label><input id="cname" name="name" required maxlength="60"></div>
+    <button class="btn primary" type="submit">Tambah kategori</button>
+  </form>
+  <form class="panel" method="post" action="/owner/items">
+    <h3>Menu baru</h3>
+    <div class="field"><label for="icat">Kategori</label><select id="icat" name="category_id" required>{% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></div>
+    <div class="field"><label for="iname">Nama</label><input id="iname" name="name" required maxlength="80"></div>
+    <div class="field"><label for="iprice">Harga (Rp)</label><input id="iprice" name="price" type="number" min="0" max="100000000" required inputmode="numeric"></div>
+    <button class="btn primary" type="submit">Tambah menu</button>
+  </form>
+</div>
+<div class="panel">
+{% if items.is_empty() %}
+  <div class="empty"><strong>Belum ada menu</strong>Tambah kategori lalu menu pertama di atas.</div>
+{% else %}
+<table class="ledger">
+  <thead><tr><th>Menu</th><th>Kategori</th><th class="num">Harga</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+  {% for i in items %}
+    <tr>
+      <td>{{ i.name }}</td><td class="muted">{{ i.category }}</td><td class="num">{{ i.price_fmt }}</td>
+      <td>{% if i.available == 0 %}<span class="chip warn">Habis</span>{% else if i.active == 0 %}<span class="chip neutral">Nonaktif</span>{% else %}<span class="chip ok">Tersedia</span>{% endif %}</td>
+      <td class="row">
+        <form method="post" action="/owner/items/{{ i.id }}/available"><button class="btn" type="submit">{% if i.available == 0 %}Tersedia{% else %}Tandai habis{% endif %}</button></form>
+        <form method="post" action="/owner/items/{{ i.id }}/active"><button class="btn" type="submit">{% if i.active == 0 %}Aktifkan{% else %}Nonaktifkan{% endif %}</button></form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+</div>
+{% endblock %}

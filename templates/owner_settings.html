@@ -1,0 +1,16 @@
+{% extends "app.html" %}
+{% block title %}Pengaturan{% endblock %}
+{% block body %}
+<h1>Pengaturan</h1>
+{% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
+<form class="panel" method="post" action="/owner/settings">
+  <div class="field"><label for="outlet">Nama kafe</label><input id="outlet" name="outlet_name" value="{{ s.outlet_name }}" required maxlength="60"></div>
+  <div class="field"><label for="tax">Pajak (%) — sesuai perda daerah Anda</label><input id="tax" name="tax_pct" value="{{ tax_pct }}" required inputmode="decimal"></div>
+  <div class="field"><label for="svc">Service charge (%)</label><input id="svc" name="service_pct" value="{{ service_pct }}" required inputmode="decimal"></div>
+  <div class="field"><label><input type="checkbox" name="tax_inclusive" value="1" {% if s.tax_inclusive == 1 %}checked{% endif %}> Harga menu sudah termasuk pajak</label></div>
+  <div class="field"><label><input type="checkbox" name="service_in_tax_base" value="1" {% if s.service_in_tax_base == 1 %}checked{% endif %}> Service charge masuk dasar pajak</label></div>
+  <div class="field"><label><input type="checkbox" name="qr_ordering" value="1" {% if s.qr_ordering == 1 %}checked{% endif %}> Pesanan QR aktif</label></div>
+  <p class="muted">Perubahan hanya berlaku untuk pesanan baru.</p>
+  <button class="btn primary" type="submit">Simpan</button>
+</form>
+{% endblock %}

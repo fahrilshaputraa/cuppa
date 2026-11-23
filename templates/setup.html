@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Pasang Cuppa{% endblock %}
+{% block shell %}
+<div class="login"><form class="panel" method="post" action="/setup" autocomplete="off">
+  <h1>Selamat datang</h1>
+  <p class="muted">Buat akun owner pertama. Kode pemasangan ada di log server saat Cuppa dijalankan.</p>
+  {% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
+  <div class="field"><label for="code">Kode pemasangan</label><input id="code" name="code" required maxlength="64" autocomplete="off"></div>
+  <div class="field"><label for="outlet">Nama kafe</label><input id="outlet" name="outlet" required maxlength="60"></div>
+  <div class="field"><label for="name">Nama owner</label><input id="name" name="name" required maxlength="60"></div>
+  <div class="field"><label for="secret">Kata sandi (min. 8 karakter)</label><input id="secret" name="secret" type="password" required minlength="8" maxlength="128" autocomplete="new-password"></div>
+  <button class="btn primary" type="submit">Pasang</button>
+</form></div>
+{% endblock %}

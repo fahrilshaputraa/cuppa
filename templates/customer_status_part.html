@@ -1,0 +1,8 @@
+<div class="panel">
+  <p><span class="chip {{ class }}">{{ label }}</span></p>
+  <p class="muted">{{ hint }}</p>
+  <table class="ledger"><tbody>
+  {% for l in lines %}<tr><td>{{ l }}</td></tr>{% endfor %}
+  <tr><td><strong>Total</strong> <span class="num">{{ total }}</span></td></tr>
+  </tbody></table>
+</div>

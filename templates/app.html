@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block shell %}
+<div class="shell">
+  <nav class="sidebar" aria-label="Navigasi utama">
+    <div class="brand">cup<span>pa</span></div>
+    {% if ctx.role == "owner" %}
+      <a href="/owner" {% if ctx.nav == "home" %}aria-current="page"{% endif %}>Ringkasan</a>
+      <a href="/owner/menu" {% if ctx.nav == "menu" %}aria-current="page"{% endif %}>Menu</a>
+      <a href="/owner/tables" {% if ctx.nav == "tables" %}aria-current="page"{% endif %}>Meja &amp; QR</a>
+      <a href="/owner/staff" {% if ctx.nav == "staff" %}aria-current="page"{% endif %}>Staf</a>
+      <a href="/owner/settings" {% if ctx.nav == "settings" %}aria-current="page"{% endif %}>Pengaturan</a>
+      <a href="/owner/audit" {% if ctx.nav == "audit" %}aria-current="page"{% endif %}>Log audit</a>
+    {% endif %}
+    {% if ctx.role == "owner" || ctx.role == "cashier" %}
+      <a href="/cashier" {% if ctx.nav == "cashier" %}aria-current="page"{% endif %}>Kasir</a>
+      <a href="/cashier/new" {% if ctx.nav == "new" %}aria-current="page"{% endif %}>Pesanan baru</a>
+      <a href="/cashier/shift" {% if ctx.nav == "shift" %}aria-current="page"{% endif %}>Shift</a>
+    {% endif %}
+    {% if ctx.role == "kitchen" || ctx.role == "owner" %}
+      <a href="/kitchen" {% if ctx.nav == "kitchen" %}aria-current="page"{% endif %}>Dapur</a>
+    {% endif %}
+    <form method="post" action="/logout"><button class="btn" type="submit">Keluar · {{ ctx.user }}</button></form>
+  </nav>
+  <main>{% block body %}{% endblock %}</main>
+</div>
+{% endblock %}

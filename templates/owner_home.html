@@ -1,0 +1,11 @@
+{% extends "app.html" %}
+{% block title %}Ringkasan{% endblock %}
+{% block body %}
+<h1>Ringkasan hari ini</h1>
+<div class="grid cols-3">
+  <div class="panel stat"><div class="label">Penjualan</div><div class="value">{{ sales }}</div></div>
+  <div class="panel stat"><div class="label">Pesanan dibayar</div><div class="value">{{ paid_count }}</div></div>
+  <div class="panel stat"><div class="label">Void</div><div class="value">{{ void_count }}</div></div>
+</div>
+<p class="muted">Shift: {% if shift_open %}terbuka{% else %}belum dibuka{% endif %}</p>
+{% endblock %}

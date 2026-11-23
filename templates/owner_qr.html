@@ -1,0 +1,11 @@
+{% extends "app.html" %}
+{% block title %}QR meja {{ label }}{% endblock %}
+{% block body %}
+<div class="panel qr-sheet">
+  <h1>Meja {{ label }}</h1>
+  <div class="qr">{{ svg|safe }}</div>
+  <p class="muted">Pindai untuk memesan · {{ url }}</p>
+  <button class="btn" type="button" data-print>Cetak</button>
+</div>
+<script src="/static/js/print.js" defer></script>
+{% endblock %}

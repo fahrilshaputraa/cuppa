@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Status pesanan{% endblock %}
+{% block shell %}
+<div class="cust">
+  <h1>Pesanan #{{ number }}</h1>
+  <div hx-get="/m/{{ token }}/orders/{{ id }}/status" hx-trigger="load, every 5s" hx-swap="innerHTML" aria-live="polite"></div>
+  <a class="btn" href="/m/{{ token }}">Pesan lagi</a>
+</div>
+{% endblock %}
