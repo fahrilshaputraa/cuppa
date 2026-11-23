@@ -1,0 +1,28 @@
+{% extends "app.html" %}
+{% block title %}Biaya{% endblock %}
+{% block body %}
+<div class="page-head"><h1>Biaya operasional</h1><span class="muted">{{ month }}</span></div>
+{% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
+<div class="stat-row">
+  <div class="panel stat"><div class="label">Total bulan ini</div><div class="value">{{ total }}</div></div>
+  <div class="panel stat"><div class="label">Biaya tetap</div><div class="value">{{ fixed }}</div></div>
+  <div class="panel stat"><div class="label">Biaya variabel</div><div class="value">{{ variable }}</div></div>
+</div>
+<form class="panel" method="post" action="/owner/expenses">
+  <h3>Catat biaya</h3>
+  <div class="row">
+    <div class="field"><label for="ed">Tanggal</label><input id="ed" type="date" name="day" value="{{ today }}" required></div>
+    <div class="field"><label for="ec">Kategori</label><input id="ec" name="category" required maxlength="40" placeholder="Sewa, listrik, bahan baku"></div>
+    <div class="field"><label for="ea">Nominal (Rp)</label><input id="ea" name="amount" type="number" min="1" required inputmode="numeric"></div>
+    <div class="field"><label for="ek">Jenis</label><select id="ek" name="kind"><option value="fixed">Tetap</option><option value="variable">Variabel</option></select></div>
+  </div>
+  <div class="field"><label for="en">Catatan</label><input id="en" name="note" maxlength="120"></div>
+  <button class="btn primary" type="submit">Simpan</button>
+</form>
+<div class="panel">
+{% if rows.is_empty() %}<div class="empty"><strong>Belum ada biaya bulan ini</strong>Catat sewa, listrik, gaji, dan bahan agar laba bersih terhitung</div>{% else %}
+<table class="ledger"><thead><tr><th>Tanggal</th><th>Kategori</th><th>Jenis</th><th>Catatan</th><th class="num">Nominal</th></tr></thead><tbody>
+{% for r in rows %}<tr><td class="muted">{{ r.0 }}</td><td>{{ r.1 }}</td><td>{{ r.3 }}</td><td class="muted">{{ r.4 }}</td><td class="num">{{ r.2 }}</td></tr>{% endfor %}
+</tbody></table>{% endif %}
+</div>
+{% endblock %}

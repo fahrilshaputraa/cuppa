@@ -864,6 +864,9 @@ async fn pages_have_no_inline_script_or_style() {
         "/cashier/new".into(),
         "/cashier/shift".into(),
         "/cashier/history".into(),
+        "/owner/vouchers".into(),
+        "/owner/expenses".into(),
+        "/display".into(),
         "/owner/devices".into(),
         "/owner/wizard".into(),
         format!("/orders/{oid}"),
@@ -1564,4 +1567,441 @@ async fn backup_verify_checks_integrity() {
     cuppa::backup::verify(snap.to_str().unwrap()).await.unwrap();
     std::fs::write(&path, b"not a database").unwrap();
     assert!(cuppa::backup::verify(path.to_str().unwrap()).await.is_err());
+}
+
+// ---------------------------------------------------------------------------------------------
+// Extended features: split payment, vouchers, digital receipt, calls, rating, display, expenses
+// ---------------------------------------------------------------------------------------------
+
+#[tokio::test]
+async fn split_and_mixed_payment_locks_only_when_fully_paid() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let (oid, cashier, _) = confirmed_order(&a, &owner, 2).await; // 55.000
+    let p1 = send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/pay"),
+        Some(&cashier),
+        Some("method=cash&amount=20000&tendered=20000"),
+        true,
+    )
+    .await;
+    assert!(p1.body.contains("Sisa Rp35.000"), "{}", p1.body);
+    assert_eq!(db_one::<String>(&a, "SELECT status FROM orders").await, "confirmed");
+    // Frozen after a partial payment: no discount, no item void.
+    let d = send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/discount"),
+        Some(&cashier),
+        Some("mode=pct&value=5&reason=x"),
+        true,
+    )
+    .await;
+    assert_eq!(d.status, StatusCode::UNPROCESSABLE_ENTITY);
+    // Over-paying is refused.
+    let over = send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/pay"),
+        Some(&cashier),
+        Some("method=qris&amount=40000&reference=R1"),
+        true,
+    )
+    .await;
+    assert!(over.body.contains("sisa tagihan"), "{}", over.body);
+    // Second payment, different method, settles it and locks the order.
+    let p2 = send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/pay"),
+        Some(&cashier),
+        Some("method=qris&reference=R1"),
+        true,
+    )
+    .await;
+    assert_eq!(p2.status, StatusCode::SEE_OTHER);
+    assert_eq!(db_one::<String>(&a, "SELECT status FROM orders").await, "paid");
+    assert_eq!(db_one::<i64>(&a, "SELECT COUNT(*) FROM payments").await, 2);
+    assert!(
+        sqlx::query("UPDATE orders SET total = 1")
+            .execute(&a.st.db)
+            .await
+            .is_err()
+    );
+    // Receipt shows both payments; only the cash part counts toward the drawer.
+    let rc = send(
+        &a,
+        "GET",
+        &format!("/orders/{oid}/receipt"),
+        Some(&cashier),
+        None,
+        false,
+    )
+    .await;
+    assert!(rc.body.contains("Bayar (Tunai)") && rc.body.contains("Bayar (QRIS)"));
+    let z = send(
+        &a,
+        "POST",
+        "/cashier/shift/close",
+        Some(&cashier),
+        Some("counted=120000"),
+        true,
+    )
+    .await;
+    assert!(z.body.contains("Rp120.000"), "{}", z.body); // 100.000 + 20.000 cash
+}
+
+#[tokio::test]
+async fn vouchers_validate_limits_and_apply_once() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let r = send(
+        &a,
+        "POST",
+        "/owner/vouchers",
+        Some(&owner),
+        Some("code=hemat10&kind=pct&value=10&min_subtotal=40000&max_uses=1"),
+        true,
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.body);
+    let bad = send(
+        &a,
+        "POST",
+        "/owner/vouchers",
+        Some(&owner),
+        Some("code=x&kind=pct&value=150"),
+        true,
+    )
+    .await;
+    assert!(bad.body.contains("Kode 3"));
+    let (oid, cashier, _) = confirmed_order(&a, &owner, 2).await; // subtotal 50.000
+    let unknown = send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/voucher"),
+        Some(&cashier),
+        Some("code=NOPE"),
+        true,
+    )
+    .await;
+    assert!(unknown.body.contains("tidak dikenal"));
+    let ok = send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/voucher"),
+        Some(&cashier),
+        Some("code=HEMAT10"),
+        true,
+    )
+    .await;
+    assert!(ok.body.contains("Voucher diterapkan"), "{}", ok.body);
+    assert_eq!(db_one::<i64>(&a, "SELECT discount FROM orders").await, 5_000);
+    assert_eq!(db_one::<i64>(&a, "SELECT used FROM vouchers").await, 1);
+    // max_uses = 1 -> a second order cannot use it.
+    let (token, item) = (
+        db_one::<String>(&a, "SELECT token FROM tables").await,
+        db_one::<String>(&a, "SELECT id FROM menu_items").await,
+    );
+    send(
+        &a,
+        "POST",
+        &format!("/m/{token}/orders"),
+        None,
+        Some(&format!("qty_{item}=2")),
+        true,
+    )
+    .await;
+    let o2: String = sqlx::query_scalar("SELECT id FROM orders WHERE id != ? LIMIT 1")
+        .bind(&oid)
+        .fetch_one(&a.st.db)
+        .await
+        .unwrap();
+    send(
+        &a,
+        "POST",
+        &format!("/orders/{o2}/confirm"),
+        Some(&cashier),
+        Some(""),
+        true,
+    )
+    .await;
+    let again = send(
+        &a,
+        "POST",
+        &format!("/orders/{o2}/voucher"),
+        Some(&cashier),
+        Some("code=HEMAT10"),
+        true,
+    )
+    .await;
+    assert!(again.body.contains("habis dipakai"), "{}", again.body);
+}
+
+#[tokio::test]
+async fn digital_receipt_link_is_public_unguessable_and_read_only() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let (oid, cashier, _) = confirmed_order(&a, &owner, 2).await;
+    // Not available before payment.
+    assert_eq!(
+        send(&a, "GET", "/r/00000000000000000000000000000000", None, None, false)
+            .await
+            .status,
+        StatusCode::NOT_FOUND
+    );
+    send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/pay"),
+        Some(&cashier),
+        Some("method=cash&tendered=60000"),
+        true,
+    )
+    .await;
+    let token: String = db_one(&a, "SELECT receipt_token FROM orders").await;
+    assert_eq!(token.len(), 32);
+    let r = send(&a, "GET", &format!("/r/{token}"), None, None, false).await; // no cookie
+    assert_eq!(r.status, StatusCode::OK);
+    assert!(r.body.contains("Rp55.000") && !r.body.contains("Budi"));
+    let page = send(
+        &a,
+        "GET",
+        &format!("/orders/{oid}/receipt"),
+        Some(&cashier),
+        None,
+        false,
+    )
+    .await;
+    assert!(page.body.contains("wa.me") && page.body.contains(&token));
+    assert_eq!(
+        send(&a, "GET", "/r/not-a-token", None, None, false).await.status,
+        StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
+async fn table_calls_rating_bill_and_display() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let (oid, cashier, _) = confirmed_order(&a, &owner, 1).await;
+    let token: String = db_one(&a, "SELECT token FROM tables").await;
+    // Customer asks for the bill (twice: deduplicated) and the cashier sees one call.
+    send(&a, "POST", &format!("/m/{token}/call"), None, Some("kind=bill"), true).await;
+    send(&a, "POST", &format!("/m/{token}/call"), None, Some("kind=bill"), true).await;
+    assert_eq!(db_one::<i64>(&a, "SELECT COUNT(*) FROM table_calls").await, 1);
+    let q = send(&a, "GET", "/cashier/queue", Some(&cashier), None, false).await;
+    assert!(q.body.contains("minta bill"));
+    let cid: String = db_one(&a, "SELECT id FROM table_calls").await;
+    send(
+        &a,
+        "POST",
+        &format!("/calls/{cid}/done"),
+        Some(&cashier),
+        Some(""),
+        true,
+    )
+    .await;
+    assert!(
+        !send(&a, "GET", "/cashier/queue", Some(&cashier), None, false)
+            .await
+            .body
+            .contains("minta bill")
+    );
+    assert_eq!(
+        send(&a, "POST", &format!("/m/{token}/call"), None, Some("kind=evil"), true)
+            .await
+            .status,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    // Bill page lists the table's orders.
+    let bill = send(&a, "GET", &format!("/m/{token}/bill"), None, None, false).await;
+    assert!(bill.body.contains("Minta bill") && bill.body.contains("Latte"));
+    // Rating only after payment, once per order.
+    let early = send(
+        &a,
+        "POST",
+        &format!("/m/{token}/orders/{oid}/rating"),
+        None,
+        Some("stars=5"),
+        true,
+    )
+    .await;
+    assert_eq!(early.status, StatusCode::NOT_FOUND);
+    send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/pay"),
+        Some(&cashier),
+        Some("method=cash&tendered=30000"),
+        true,
+    )
+    .await;
+    send(
+        &a,
+        "POST",
+        &format!("/m/{token}/orders/{oid}/rating"),
+        None,
+        Some("stars=5&comment=enak"),
+        true,
+    )
+    .await;
+    send(
+        &a,
+        "POST",
+        &format!("/m/{token}/orders/{oid}/rating"),
+        None,
+        Some("stars=1"),
+        true,
+    )
+    .await;
+    assert_eq!(db_one::<i64>(&a, "SELECT stars FROM order_ratings").await, 5);
+    assert_eq!(
+        send(
+            &a,
+            "POST",
+            &format!("/m/{token}/orders/{oid}/rating"),
+            None,
+            Some("stars=9"),
+            true
+        )
+        .await
+        .status,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    // Queue display shows numbers only (public).
+    let d = send(&a, "GET", "/display/part", None, None, false).await;
+    assert_eq!(d.status, StatusCode::OK);
+    assert!(d.body.contains("num-big") && !d.body.contains("Latte"));
+}
+
+#[tokio::test]
+async fn expenses_are_owner_only_and_validated() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let (_, _, cashier) = seed(&a, &owner).await;
+    assert_eq!(
+        send(&a, "GET", "/owner/expenses", Some(&cashier), None, false)
+            .await
+            .status,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        send(
+            &a,
+            "POST",
+            "/owner/expenses",
+            Some(&cashier),
+            Some("day=2026-11-24&category=x&amount=1&kind=fixed"),
+            true
+        )
+        .await
+        .status,
+        StatusCode::FORBIDDEN
+    );
+    let bad = send(
+        &a,
+        "POST",
+        "/owner/expenses",
+        Some(&owner),
+        Some("day=bad&category=Sewa&amount=1000&kind=fixed"),
+        true,
+    )
+    .await;
+    assert!(bad.body.contains("wajib diisi"));
+    let ok = send(
+        &a,
+        "POST",
+        "/owner/expenses",
+        Some(&owner),
+        Some("day=2026-11-24&category=Sewa&amount=3000000&kind=fixed"),
+        true,
+    )
+    .await;
+    assert_eq!(ok.status, StatusCode::SEE_OTHER);
+    assert_eq!(db_one::<i64>(&a, "SELECT amount FROM expenses").await, 3_000_000);
+}
+
+#[tokio::test]
+async fn profit_report_uses_cost_snapshot_and_expenses() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let (token, item, cashier) = seed(&a, &owner).await;
+    // Latte price 25.000, cost 10.000; the cost is snapshotted per order line.
+    send(
+        &a,
+        "POST",
+        &format!("/owner/items/{item}"),
+        Some(&owner),
+        Some("name=Latte&price=25000&cost=10000"),
+        true,
+    )
+    .await;
+    send(
+        &a,
+        "POST",
+        "/cashier/shift/open",
+        Some(&cashier),
+        Some("opening=0"),
+        true,
+    )
+    .await;
+    send(
+        &a,
+        "POST",
+        &format!("/m/{token}/orders"),
+        None,
+        Some(&format!("qty_{item}=2")),
+        true,
+    )
+    .await;
+    let oid: String = db_one(&a, "SELECT id FROM orders").await;
+    send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/confirm"),
+        Some(&cashier),
+        Some(""),
+        true,
+    )
+    .await;
+    send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/pay"),
+        Some(&cashier),
+        Some("method=cash&tendered=60000"),
+        true,
+    )
+    .await;
+    // Raising the cost later does not rewrite the past order.
+    send(
+        &a,
+        "POST",
+        &format!("/owner/items/{item}"),
+        Some(&owner),
+        Some("name=Latte&price=25000&cost=99999"),
+        true,
+    )
+    .await;
+    assert_eq!(db_one::<i64>(&a, "SELECT unit_cost FROM order_items").await, 10_000);
+    let today = db_one::<String>(&a, "SELECT day FROM orders").await;
+    send(
+        &a,
+        "POST",
+        "/owner/expenses",
+        Some(&owner),
+        Some(&format!("day={today}&category=Listrik&amount=5000&kind=variable")),
+        true,
+    )
+    .await;
+    let rep = send(&a, "GET", "/owner/reports", Some(&owner), None, false).await;
+    // revenue ex-tax 50.000 - HPP 20.000 = 30.000 gross; - 5.000 expenses = 25.000 net
+    assert!(
+        rep.body.contains("Rp20.000") && rep.body.contains("Rp30.000") && rep.body.contains("Rp25.000"),
+        "{}",
+        rep.body
+    );
 }

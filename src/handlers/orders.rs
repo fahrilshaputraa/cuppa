@@ -33,6 +33,7 @@ struct PriceRow {
     id: String,
     name: String,
     price: i64,
+    cost: i64,
     stock: Option<i64>,
 }
 
@@ -42,16 +43,17 @@ pub struct NewOrder<'a> {
     pub cashier_id: Option<&'a str>,
     pub items: Vec<LineReq>,
     pub note: Option<String>,
+    pub channel: &'a str,
 }
 
 /// Prices, modifiers and stock all come from the database, never from the client.
 pub async fn create_order(conn: &mut SqliteConnection, st: &AppState, o: NewOrder<'_>) -> AppResult<(String, i64)> {
     let settings = load_settings(conn).await?;
-    let mut lines: Vec<(String, String, i64, i64)> = Vec::new(); // menu_id, name, unit_price, qty
+    let mut lines: Vec<(String, String, i64, i64, i64)> = Vec::new(); // menu_id, name, unit_price, qty, unit_cost
     let mut subtotal = 0i64;
     for req in &o.items {
         let row: Option<PriceRow> = sqlx::query_as(
-            "SELECT m.id, m.name, m.price, m.stock FROM menu_items m JOIN categories c ON c.id = m.category_id \
+            "SELECT m.id, m.name, m.price, m.cost, m.stock FROM menu_items m JOIN categories c ON c.id = m.category_id \
              WHERE m.id = ? AND m.active = 1 AND m.available = 1 AND c.active = 1",
         )
         .bind(&req.menu_id)
@@ -78,7 +80,7 @@ pub async fn create_order(conn: &mut SqliteConnection, st: &AppState, o: NewOrde
         };
         let unit = r.price + extra;
         subtotal += unit * req.qty;
-        lines.push((r.id, name, unit, req.qty));
+        lines.push((r.id, name, unit, req.qty, r.cost));
     }
     let t = money::compute(subtotal, 0, rules(&settings), settings.round_to);
     let now = clock::now();
@@ -93,8 +95,8 @@ pub async fn create_order(conn: &mut SqliteConnection, st: &AppState, o: NewOrde
     let id = rand_id::id();
     let status = if o.source == "qr" { "pending" } else { "confirmed" };
     sqlx::query(
-        "INSERT INTO orders (id, day, number, table_id, source, status, subtotal, discount, service, tax, rounding, total, note, cashier_id, created_at) \
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO orders (id, day, number, table_id, source, status, subtotal, discount, service, tax, rounding, total, note, cashier_id, created_at, channel) \
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
     )
     .bind(&id)
     .bind(&day)
@@ -111,19 +113,23 @@ pub async fn create_order(conn: &mut SqliteConnection, st: &AppState, o: NewOrde
     .bind(&o.note)
     .bind(o.cashier_id)
     .bind(now)
+    .bind(o.channel)
     .execute(&mut *conn)
     .await?;
-    for (menu_id, name, unit, qty) in lines {
+    for (menu_id, name, unit, qty, cost) in lines {
         // Name (with modifiers) and price are copied: later menu edits never rewrite history.
-        sqlx::query("INSERT INTO order_items (id, order_id, menu_id, name, unit_price, qty) VALUES (?,?,?,?,?,?)")
-            .bind(rand_id::id())
-            .bind(&id)
-            .bind(&menu_id)
-            .bind(&name)
-            .bind(unit)
-            .bind(qty)
-            .execute(&mut *conn)
-            .await?;
+        sqlx::query(
+            "INSERT INTO order_items (id, order_id, menu_id, name, unit_price, qty, unit_cost) VALUES (?,?,?,?,?,?,?)",
+        )
+        .bind(rand_id::id())
+        .bind(&id)
+        .bind(&menu_id)
+        .bind(&name)
+        .bind(unit)
+        .bind(qty)
+        .bind(cost)
+        .execute(&mut *conn)
+        .await?;
     }
     audit::record(conn, Entry::new(o.cashier_id, "order.created", "order", Some(&id))).await?;
     Ok((id, number))
@@ -211,6 +217,24 @@ async fn recalc(conn: &mut SqliteConnection, id: &str, discount: Option<i64>) ->
         .execute(&mut *conn)
         .await?;
     Ok(t)
+}
+
+/// Sum of payments already taken for an order (split / mixed payment, FR-43).
+pub async fn paid_so_far(conn: &mut SqliteConnection, id: &str) -> sqlx::Result<i64> {
+    sqlx::query_scalar("SELECT COALESCE(SUM(amount),0) FROM payments WHERE order_id = ?")
+        .bind(id)
+        .fetch_one(conn)
+        .await
+}
+
+/// Once part of the bill is paid, the order content is frozen (only the remaining amount can be settled).
+async fn ensure_no_partial_payment(conn: &mut SqliteConnection, id: &str) -> AppResult<()> {
+    if paid_so_far(conn, id).await? > 0 {
+        return Err(AppError::Invalid(
+            "Sudah ada pembayaran sebagian: pesanan tidak bisa diubah lagi.".into(),
+        ));
+    }
+    Ok(())
 }
 
 pub fn notify(st: &AppState) {
@@ -303,6 +327,12 @@ pub async fn render_detail(
             .fetch_all(&mut *c)
             .await?;
     let refunded: i64 = refunds.iter().map(|r| r.0).sum();
+    let pays: Vec<(String, i64)> =
+        sqlx::query_as("SELECT method, amount FROM payments WHERE order_id = ? ORDER BY created_at")
+            .bind(id)
+            .fetch_all(&mut *c)
+            .await?;
+    let paid_sum: i64 = pays.iter().map(|p| p.1).sum();
     let tz = st.cfg.tz_offset_hours;
     let (label, class) = status_meta(&o.status);
     let editable = matches!(o.status.as_str(), "pending" | "confirmed" | "ready");
@@ -345,6 +375,13 @@ pub async fn render_detail(
         tables,
         refunded: rupiah(refunded),
         refund_left: o.total - refunded,
+        paid_lines: pays
+            .iter()
+            .map(|(m, a)| (super::receipt::method_label(m).to_string(), rupiah(*a)))
+            .collect(),
+        remaining: o.total - paid_sum,
+        remaining_fmt: rupiah(o.total - paid_sum),
+        has_partial: paid_sum > 0 && paid_sum < o.total,
         refunds: refunds
             .into_iter()
             .map(|(a, r, at)| (format!("{} {}", clock::day(at, tz), clock::hm(at, tz)), rupiah(a), r))
@@ -510,6 +547,7 @@ pub async fn discount(
         }
     }
     let mut tx = crate::db::begin_write(&st.db).await?;
+    ensure_no_partial_payment(&mut tx, &id).await?;
     recalc(&mut tx, &id, Some(amount)).await?;
     let detail = format!("{} {} => {}", f.mode, f.value, amount);
     let mut e = Entry::new(Some(&staff.id), "order.discount", "order", Some(&id));
@@ -539,6 +577,7 @@ pub async fn void_item(
     if !matches!(o.status.as_str(), "pending" | "confirmed" | "ready") {
         return Err(AppError::Invalid("Item hanya bisa dibatalkan sebelum dibayar.".into()));
     }
+    ensure_no_partial_payment(&mut tx, &id).await?;
     let row: Option<(String, i64, i64)> =
         sqlx::query_as("SELECT menu_id, qty, voided FROM order_items WHERE id = ? AND order_id = ?")
             .bind(&item)
@@ -630,10 +669,13 @@ pub async fn move_table(
 #[derive(Deserialize)]
 pub struct PayForm {
     method: String,
+    amount: Option<String>,
     tendered: Option<String>,
     reference: Option<String>,
 }
 
+/// Take a (possibly partial) payment. Several payments with different methods can settle one order (FR-43);
+/// the order locks as `paid` only when the sum equals the total.
 pub async fn pay(
     State(st): State<AppState>,
     staff: Staff,
@@ -660,17 +702,40 @@ pub async fn pay(
         .fetch_optional(&mut *tx)
         .await?;
     let shift = shift.ok_or_else(|| AppError::Invalid("Buka shift sebelum menerima pembayaran.".into()))?;
-    let tendered: Option<i64> = if f.method == "cash" {
-        let t: i64 = f
-            .tendered
-            .as_deref()
-            .unwrap_or("")
-            .trim()
+    let already = paid_so_far(&mut tx, &id).await?;
+    let remaining = o.total - already;
+    let amount: i64 = match f.amount.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        None => remaining,
+        Some(v) => v
             .parse()
-            .map_err(|_| AppError::Invalid("Uang diterima tidak valid.".into()))?;
-        if t < o.total {
+            .map_err(|_| AppError::Invalid("Nominal tidak valid.".into()))?,
+    };
+    if amount <= 0 || amount > remaining {
+        drop(tx);
+        return render_detail(
+            &st,
+            &staff,
+            &id,
+            Some(format!(
+                "Nominal harus antara Rp1 dan sisa tagihan ({}).",
+                rupiah(remaining)
+            )),
+            None,
+        )
+        .await;
+    }
+    let tendered: Option<i64> = if f.method == "cash" {
+        let t: i64 = f.tendered.as_deref().unwrap_or("").trim().parse().unwrap_or(amount);
+        if t < amount {
             drop(tx);
-            return render_detail(&st, &staff, &id, Some("Uang diterima kurang dari total.".into()), None).await;
+            return render_detail(
+                &st,
+                &staff,
+                &id,
+                Some("Uang diterima kurang dari nominal yang dibayar.".into()),
+                None,
+            )
+            .await;
         }
         Some(t)
     } else {
@@ -693,27 +758,127 @@ pub async fn pay(
         .bind(&id)
         .bind(&shift)
         .bind(&f.method)
-        .bind(o.total)
+        .bind(amount)
         .bind(tendered)
         .bind(if reference.is_empty() { None } else { Some(&reference) })
         .bind(&staff.id)
         .bind(now)
         .execute(&mut *tx)
         .await?;
-    sqlx::query("UPDATE orders SET status = 'paid', paid_at = ?, cashier_id = ? WHERE id = ?")
-        .bind(now)
-        .bind(&staff.id)
-        .bind(&id)
-        .execute(&mut *tx)
-        .await?;
-    let mut e = Entry::new(Some(&staff.id), "order.paid", "order", Some(&id));
-    let detail = format!("{} {}", f.method, o.total);
+    let fully_paid = amount == remaining;
+    if fully_paid {
+        sqlx::query("UPDATE orders SET status = 'paid', paid_at = ?, cashier_id = ?, receipt_token = ? WHERE id = ?")
+            .bind(now)
+            .bind(&staff.id)
+            .bind(rand_id::hex_token(16))
+            .bind(&id)
+            .execute(&mut *tx)
+            .await?;
+    }
+    let mut e = Entry::new(
+        Some(&staff.id),
+        if fully_paid { "order.paid" } else { "order.part_paid" },
+        "order",
+        Some(&id),
+    );
+    let detail = format!("{} {}", f.method, amount);
     e.detail = Some(&detail);
     audit::record(&mut tx, e).await?;
     tx.commit().await?;
     notify(&st);
-    super::receipt::auto_print(st.clone(), id.clone());
-    Ok(Redirect::to(&format!("/orders/{id}/receipt")).into_response())
+    if fully_paid {
+        super::receipt::auto_print(st.clone(), id.clone());
+        Ok(Redirect::to(&format!("/orders/{id}/receipt")).into_response())
+    } else {
+        render_detail(
+            &st,
+            &staff,
+            &id,
+            None,
+            Some(format!(
+                "Pembayaran {} diterima. Sisa {}.",
+                rupiah(amount),
+                rupiah(remaining - amount)
+            )),
+        )
+        .await
+    }
+}
+
+#[derive(Deserialize)]
+pub struct VoucherForm {
+    code: String,
+}
+
+/// Apply a voucher/promo code (FR-49). Counts against max uses; recorded in the audit log.
+pub async fn voucher(
+    State(st): State<AppState>,
+    staff: Staff,
+    Path(id): Path<String>,
+    Form(f): Form<VoucherForm>,
+) -> AppResult<Response> {
+    staff.require(&[Role::Owner, Role::Cashier])?;
+    staff.need(Perm::Discount)?;
+    let code = clean(&f.code, 20);
+    let mut tx = crate::db::begin_write(&st.db).await?;
+    let o = fetch_order(&mut tx, &id).await?;
+    if !matches!(o.status.as_str(), "pending" | "confirmed" | "ready") {
+        return Err(AppError::Invalid(
+            "Voucher hanya untuk pesanan yang belum dibayar.".into(),
+        ));
+    }
+    ensure_no_partial_payment(&mut tx, &id).await?;
+    let v: Option<(String, String, i64, i64, Option<i64>, i64, Option<i64>)> = sqlx::query_as(
+        "SELECT id, kind, value, min_subtotal, max_uses, used, valid_until FROM vouchers WHERE code = ? AND active = 1",
+    )
+    .bind(&code)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let now = clock::now();
+    let bad = |m: &str| m.to_string();
+    let msg = match &v {
+        None => Some(bad("Kode voucher tidak dikenal.")),
+        Some((_, _, _, min, max, used, until)) => {
+            if o.subtotal < *min {
+                Some(format!("Minimal belanja {}.", rupiah(*min)))
+            } else if max.is_some_and(|m| *used >= m) {
+                Some(bad("Voucher sudah habis dipakai."))
+            } else if until.is_some_and(|u| u < now) {
+                Some(bad("Voucher sudah kedaluwarsa."))
+            } else {
+                None
+            }
+        }
+    };
+    if let Some(m) = msg {
+        drop(tx);
+        return render_detail(&st, &staff, &id, Some(m), None).await;
+    }
+    let (vid, kind, value, ..) = v.expect("checked above");
+    let amount = if kind == "pct" {
+        o.subtotal * value.min(100) / 100
+    } else {
+        value
+    }
+    .min(o.subtotal);
+    recalc(&mut tx, &id, Some(amount)).await?;
+    sqlx::query("UPDATE vouchers SET used = used + 1 WHERE id = ?")
+        .bind(&vid)
+        .execute(&mut *tx)
+        .await?;
+    let detail = format!("voucher {code} => {amount}");
+    let mut e = Entry::new(Some(&staff.id), "order.voucher", "order", Some(&id));
+    e.detail = Some(&detail);
+    audit::record(&mut tx, e).await?;
+    tx.commit().await?;
+    render_detail(
+        &st,
+        &staff,
+        &id,
+        None,
+        Some(format!("Voucher diterapkan: diskon {}.", rupiah(amount))),
+    )
+    .await
 }
 
 #[derive(Deserialize)]
@@ -802,10 +967,17 @@ pub async fn refund(
         )
         .await;
     }
-    let method: String = sqlx::query_scalar("SELECT method FROM payments WHERE order_id = ?")
-        .bind(&id)
-        .fetch_one(&mut *tx)
-        .await?;
+    let cash_paid: i64 =
+        sqlx::query_scalar("SELECT COALESCE(SUM(amount),0) FROM payments WHERE order_id = ? AND method = 'cash'")
+            .bind(&id)
+            .fetch_one(&mut *tx)
+            .await?;
+    let cash_out_done: i64 =
+        sqlx::query_scalar("SELECT COALESCE(SUM(amount),0) FROM cash_movements WHERE kind = 'out' AND reason = ?")
+            .bind(format!("Refund #{}", o.number))
+            .fetch_one(&mut *tx)
+            .await?;
+    let cash_part = f.amount.min((cash_paid - cash_out_done).max(0));
     let now = clock::now();
     let rid = rand_id::id();
     sqlx::query(
@@ -820,7 +992,7 @@ pub async fn refund(
     .bind(now)
     .execute(&mut *tx)
     .await?;
-    if method == "cash" {
+    if cash_part > 0 {
         let shift: Option<String> = sqlx::query_scalar("SELECT id FROM shifts WHERE closed_at IS NULL")
             .fetch_optional(&mut *tx)
             .await?;
@@ -840,7 +1012,7 @@ pub async fn refund(
             .bind(rand_id::id())
             .bind(&shift)
             .bind("out")
-            .bind(f.amount)
+            .bind(cash_part)
             .bind(&why)
             .bind(&staff.id)
             .bind(now)

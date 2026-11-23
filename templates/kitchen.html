@@ -1,7 +1,7 @@
 {% extends "app.html" %}
 {% block title %}Dapur{% endblock %}
 {% block body %}
-<h1>Dapur</h1>
+<div class="page-head"><h1>Tiket dapur</h1></div>
 <div hx-ext="sse" sse-connect="/events">
   <div id="tickets" hx-get="/kitchen/tickets" hx-trigger="load, sse:orders, every 20s" hx-swap="innerHTML" aria-live="polite"><div class="empty">Memuat…</div></div>
 </div>

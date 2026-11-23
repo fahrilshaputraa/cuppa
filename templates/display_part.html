@@ -1,0 +1,4 @@
+<div class="display-cols">
+  <section><h2>Sedang diproses</h2><div class="nums">{% for n in working %}<span class="num-big">{{ n }}</span>{% else %}<span class="muted">—</span>{% endfor %}</div></section>
+  <section><h2>Siap diambil</h2><div class="nums ok">{% for n in ready %}<span class="num-big">{{ n }}</span>{% else %}<span class="muted">—</span>{% endfor %}</div></section>
+</div>

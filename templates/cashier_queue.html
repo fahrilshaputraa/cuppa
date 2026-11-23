@@ -1,6 +1,7 @@
 <div data-pending="{{ pending }}" hidden></div>
+{% for c in calls %}<div class="alert-call" role="status"><span><strong>{{ c.label }}</strong> {{ c.kind_label }} · {{ c.time }}</span><form method="post" action="/calls/{{ c.id }}/done"><button class="btn" type="submit">Selesai</button></form></div>{% endfor %}
 {% if orders.is_empty() %}
-<div class="panel empty"><strong>Belum ada pesanan</strong>Pesanan dari QR dan input manual muncul di sini.</div>
+<div class="panel empty"><strong>Belum ada pesanan</strong>Pesanan dari QR dan input manual muncul di sini</div>
 {% else %}
 <div class="grid cols-2">
 {% for o in orders %}
@@ -11,14 +12,15 @@
       {% else if o.status == "confirmed" %}<span class="chip neutral">Diproses</span>
       {% else %}<span class="chip ok">Siap</span>{% endif %}
     </header>
-    <div class="muted">{{ o.time }} · {{ o.source_label }}</div>
+    <div class="meta">{{ o.time }} · {{ o.source_label }}</div>
+    <div class="tear"></div>
     <ul>{% for l in o.lines %}<li>{{ l }}</li>{% endfor %}</ul>
-    {% if let Some(n) = o.note %}<p class="muted">Catatan: {{ n }}</p>{% endif %}
-    <div class="row between"><strong class="num">{{ o.total_fmt }}</strong>
+    {% if let Some(n) = o.note %}<p class="muted small">Catatan: {{ n }}</p>{% endif %}
+    <div class="foot"><span class="total">{{ o.total_fmt }}</span>
     <div class="row">
       {% if o.status == "pending" %}
+        <form method="post" action="/orders/{{ o.id }}/reject" class="row"><input name="reason" placeholder="Alasan menolak" required maxlength="120" aria-label="Alasan menolak"><button class="btn danger" type="submit">Tolak</button></form>
         <form method="post" action="/orders/{{ o.id }}/confirm"><button class="btn primary" type="submit">Konfirmasi</button></form>
-        <form method="post" action="/orders/{{ o.id }}/reject" class="row"><input name="reason" placeholder="Alasan" required maxlength="120" aria-label="Alasan menolak"><button class="btn danger" type="submit">Tolak</button></form>
       {% else %}
         <a class="btn primary" href="/orders/{{ o.id }}">Bayar</a>
       {% endif %}

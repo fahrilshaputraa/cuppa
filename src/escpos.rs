@@ -23,8 +23,10 @@ pub struct Receipt<'a> {
     pub service: i64,
     pub tax: i64,
     pub total: i64,
-    pub method: Option<&'a str>,
-    pub tendered: Option<i64>,
+    pub discount: i64,
+    pub rounding: i64,
+    /// (method label, amount applied, cash tendered)
+    pub payments: &'a [(String, i64, Option<i64>)],
     pub footer: &'a str,
     pub cols: usize,
     pub open_drawer: bool,
@@ -60,22 +62,32 @@ pub fn receipt_bytes(r: &Receipt) -> Vec<u8> {
     }
     text(&mut b, &format!("{}\n", "-".repeat(r.cols)));
     text(&mut b, &two_col("Subtotal", &rupiah(r.subtotal), r.cols));
+    if r.discount > 0 {
+        text(&mut b, &two_col("Diskon", &format!("-{}", rupiah(r.discount)), r.cols));
+    }
     if r.service > 0 {
         text(&mut b, &two_col("Service", &rupiah(r.service), r.cols));
     }
     if r.tax > 0 {
         text(&mut b, &two_col("Pajak", &rupiah(r.tax), r.cols));
     }
+    if r.rounding != 0 {
+        text(&mut b, &two_col("Pembulatan", &rupiah(r.rounding), r.cols));
+    }
     b.extend_from_slice(&[0x1b, b'E', 1]);
     text(&mut b, &two_col("TOTAL", &rupiah(r.total), r.cols));
     b.extend_from_slice(&[0x1b, b'E', 0]);
-    if let Some(m) = r.method {
+    for (label, amount, tendered) in r.payments {
         text(
             &mut b,
-            &two_col(&format!("Bayar ({m})"), &rupiah(r.tendered.unwrap_or(r.total)), r.cols),
+            &two_col(
+                &format!("Bayar ({label})"),
+                &rupiah(tendered.unwrap_or(*amount)),
+                r.cols,
+            ),
         );
-        if let Some(t) = r.tendered.filter(|t| *t > r.total) {
-            text(&mut b, &two_col("Kembali", &rupiah(t - r.total), r.cols));
+        if let Some(t) = tendered.filter(|t| t > amount) {
+            text(&mut b, &two_col("Kembali", &rupiah(t - amount), r.cols));
         }
     }
     b.extend_from_slice(&[0x1b, b'a', 1]);
@@ -166,8 +178,9 @@ mod tests {
             service: 0,
             tax: 3_600,
             total: 39_600,
-            method: Some("cash"),
-            tendered: Some(50_000),
+            discount: 0,
+            rounding: 0,
+            payments: &[("Tunai".to_string(), 39_600, Some(50_000))],
             footer: "Terima kasih",
             cols: 32,
             open_drawer: true,

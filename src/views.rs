@@ -14,6 +14,8 @@ pub struct Ctx {
     pub qr: bool,
     pub theme: String,
     pub can_reports: bool,
+    pub initial: String,
+    pub role_label: &'static str,
 }
 
 impl Ctx {
@@ -23,6 +25,17 @@ impl Ctx {
         c.user = s.name.clone();
         c.nav = nav;
         c.can_reports = s.can(crate::auth::Perm::Reports);
+        c.initial = s
+            .name
+            .chars()
+            .next()
+            .map(|ch| ch.to_uppercase().to_string())
+            .unwrap_or_default();
+        c.role_label = match s.role {
+            crate::auth::Role::Owner => "Owner",
+            crate::auth::Role::Cashier => "Kasir",
+            crate::auth::Role::Kitchen => "Dapur",
+        };
         Ok(c)
     }
     pub async fn guest(st: &AppState) -> Result<Self, AppError> {
@@ -39,6 +52,8 @@ impl Ctx {
             qr: qr == 1,
             theme,
             can_reports: false,
+            initial: String::new(),
+            role_label: "",
         })
     }
 }
@@ -65,10 +80,17 @@ pub struct SetupPage {
 #[template(path = "owner_home.html")]
 pub struct OwnerHome {
     pub ctx: Ctx,
+    pub today_label: String,
     pub sales: String,
+    pub sales_delta: String,
     pub paid_count: i64,
+    pub orders_delta: String,
+    pub average: String,
     pub void_count: i64,
     pub shift_open: bool,
+    pub chart: String,
+    pub top: Vec<(String, i64, String)>,
+    pub top_max: i64,
 }
 
 #[derive(sqlx::FromRow)]
@@ -86,8 +108,10 @@ pub struct ItemRow {
     pub active: i64,
     pub available: i64,
     pub stock: Option<i64>,
+    pub cost: i64,
 }
 pub struct ItemView {
+    pub cost: i64,
     pub stock: Option<i64>,
     pub price: i64,
     pub id: String,
@@ -230,6 +254,7 @@ pub struct CashierPage {
 #[template(path = "cashier_queue.html")]
 pub struct CashierQueue {
     pub orders: Vec<QueueOrder>,
+    pub calls: Vec<CallView>,
     pub pending: usize,
 }
 
@@ -327,6 +352,10 @@ pub struct OrderDetail {
     pub tables: Vec<TableRow>,
     pub refunded: String,
     pub refund_left: i64,
+    pub paid_lines: Vec<(String, String)>,
+    pub remaining: i64,
+    pub remaining_fmt: String,
+    pub has_partial: bool,
     pub refunds: Vec<(String, String, String)>,
 }
 
@@ -384,6 +413,11 @@ pub struct CustomerStatus {
 #[derive(Template)]
 #[template(path = "customer_status_part.html")]
 pub struct CustomerStatusPart {
+    pub can_rate: bool,
+    pub rated: Option<i64>,
+    pub token: String,
+    pub id: String,
+    pub receipt: Option<String>,
     pub class: &'static str,
     pub label: &'static str,
     pub hint: &'static str,
@@ -462,4 +496,75 @@ pub struct HistoryPage {
     pub q: String,
     pub day: String,
     pub rows: Vec<HistRow>,
+}
+
+#[derive(Template)]
+#[template(path = "display.html")]
+pub struct DisplayPage {
+    pub ctx: Ctx,
+}
+
+#[derive(Template)]
+#[template(path = "display_part.html")]
+pub struct DisplayPart {
+    pub working: Vec<i64>,
+    pub ready: Vec<i64>,
+}
+
+pub struct BillOrder {
+    pub id: String,
+    pub number: i64,
+    pub status_label: &'static str,
+    pub status_class: &'static str,
+    pub total: String,
+    pub lines: Vec<String>,
+    pub paid: bool,
+}
+
+#[derive(Template)]
+#[template(path = "customer_bill.html")]
+pub struct CustomerBill {
+    pub ctx: Ctx,
+    pub token: String,
+    pub table_label: String,
+    pub orders: Vec<BillOrder>,
+    pub open_total: String,
+    pub called: Option<String>,
+}
+
+pub struct CallView {
+    pub id: String,
+    pub label: String,
+    pub kind_label: &'static str,
+    pub time: String,
+}
+
+pub struct VoucherView {
+    pub id: String,
+    pub code: String,
+    pub value: String,
+    pub min: String,
+    pub uses: String,
+    pub active: bool,
+}
+
+#[derive(Template)]
+#[template(path = "owner_vouchers.html")]
+pub struct VouchersPage {
+    pub ctx: Ctx,
+    pub error: Option<String>,
+    pub vouchers: Vec<VoucherView>,
+}
+
+#[derive(Template)]
+#[template(path = "owner_expenses.html")]
+pub struct ExpensesPage {
+    pub ctx: Ctx,
+    pub error: Option<String>,
+    pub today: String,
+    pub month: String,
+    pub total: String,
+    pub fixed: String,
+    pub variable: String,
+    pub rows: Vec<(String, String, String, String, String)>,
 }

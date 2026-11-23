@@ -6,3 +6,12 @@
   <tr><td><strong>Total</strong> <span class="num">{{ total }}</span></td></tr>
   </tbody></table>
 </div>
+{% if let Some(r) = receipt %}<p><a class="btn" href="{{ r }}">Lihat struk digital</a></p>{% endif %}
+{% if can_rate %}
+<form class="panel" method="post" action="/m/{{ token }}/orders/{{ id }}/rating">
+  <h3>Bagaimana pesanan Anda?</h3>
+  <div class="stars" role="radiogroup" aria-label="Nilai">{% for n in [1,2,3,4,5] %}<label><input type="radio" name="stars" value="{{ n }}" required> {{ n }}</label>{% endfor %}</div>
+  <div class="field"><label for="rc">Komentar (opsional)</label><input id="rc" name="comment" maxlength="200"></div>
+  <button class="btn primary" type="submit">Kirim</button>
+</form>
+{% else if let Some(r) = rated %}<p class="muted">Terima kasih atas nilai {{ r }}/5</p>{% endif %}

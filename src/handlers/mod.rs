@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+pub mod admin;
 pub mod cashier;
 pub mod customer;
 pub mod extras;
 pub mod orders;
 pub mod owner;
+pub mod public;
 pub mod receipt;
 pub mod reports;
 pub mod session;

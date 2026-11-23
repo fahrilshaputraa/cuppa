@@ -3,29 +3,37 @@
 <div class="shell">
   <nav class="sidebar" aria-label="Navigasi utama">
     <div class="brand">cup<span>pa</span></div>
+    <div class="nav">
     {% if ctx.role == "owner" %}
       <div class="nav-label">Kelola</div>
-      <a href="/owner" {% if ctx.nav == "home" %}aria-current="page"{% endif %}>Ringkasan</a>
-      <a href="/owner/menu" {% if ctx.nav == "menu" %}aria-current="page"{% endif %}>Menu</a>
-      {% if ctx.qr %}<a href="/owner/tables" {% if ctx.nav == "tables" %}aria-current="page"{% endif %}>Meja &amp; QR</a>{% endif %}
-      <a href="/owner/devices" {% if ctx.nav == "devices" %}aria-current="page"{% endif %}>Perangkat</a>
-      <a href="/owner/staff" {% if ctx.nav == "staff" %}aria-current="page"{% endif %}>Staf</a>
-      <a href="/owner/settings" {% if ctx.nav == "settings" %}aria-current="page"{% endif %}>Pengaturan</a>
-      {% if ctx.can_reports %}<a href="/owner/reports" {% if ctx.nav == "reports" %}aria-current="page"{% endif %}>Laporan</a>{% endif %}
-      <a href="/owner/audit" {% if ctx.nav == "audit" %}aria-current="page"{% endif %}>Log audit</a>
+      <a data-i="home" href="/owner" {% if ctx.nav == "home" %}aria-current="page"{% endif %}>Ringkasan</a>
+      {% if ctx.can_reports %}<a data-i="reports" href="/owner/reports" {% if ctx.nav == "reports" %}aria-current="page"{% endif %}>Laporan</a>{% endif %}
+      <a data-i="menu" href="/owner/menu" {% if ctx.nav == "menu" %}aria-current="page"{% endif %}>Menu</a>
+      {% if ctx.qr %}<a data-i="tables" href="/owner/tables" {% if ctx.nav == "tables" %}aria-current="page"{% endif %}>Meja dan QR</a>{% endif %}
+      <a data-i="vouchers" href="/owner/vouchers" {% if ctx.nav == "vouchers" %}aria-current="page"{% endif %}>Voucher</a>
+      <a data-i="expenses" href="/owner/expenses" {% if ctx.nav == "expenses" %}aria-current="page"{% endif %}>Biaya</a>
+      <a data-i="staff" href="/owner/staff" {% if ctx.nav == "staff" %}aria-current="page"{% endif %}>Staf</a>
+      <a data-i="devices" href="/owner/devices" {% if ctx.nav == "devices" %}aria-current="page"{% endif %}>Perangkat</a>
+      <a data-i="settings" href="/owner/settings" {% if ctx.nav == "settings" %}aria-current="page"{% endif %}>Pengaturan</a>
+      <a data-i="audit" href="/owner/audit" {% if ctx.nav == "audit" %}aria-current="page"{% endif %}>Log audit</a>
     {% endif %}
     {% if ctx.role == "owner" || ctx.role == "cashier" %}
       <div class="nav-label">Kasir</div>
-      <a href="/cashier" {% if ctx.nav == "cashier" %}aria-current="page"{% endif %}>Antrean</a>
-      <a href="/cashier/new" {% if ctx.nav == "new" %}aria-current="page"{% endif %}>Pesanan baru</a>
-      <a href="/cashier/history" {% if ctx.nav == "history" %}aria-current="page"{% endif %}>Riwayat</a>
-      <a href="/cashier/shift" {% if ctx.nav == "shift" %}aria-current="page"{% endif %}>Shift</a>
+      <a data-i="queue" href="/cashier" {% if ctx.nav == "cashier" %}aria-current="page"{% endif %}>Antrean</a>
+      <a data-i="new" href="/cashier/new" {% if ctx.nav == "new" %}aria-current="page"{% endif %}>Pesanan baru</a>
+      <a data-i="history" href="/cashier/history" {% if ctx.nav == "history" %}aria-current="page"{% endif %}>Riwayat</a>
+      <a data-i="shift" href="/cashier/shift" {% if ctx.nav == "shift" %}aria-current="page"{% endif %}>Shift</a>
     {% endif %}
     {% if ctx.kitchen && (ctx.role == "kitchen" || ctx.role == "owner") %}
       <div class="nav-label">Dapur</div>
-      <a href="/kitchen" {% if ctx.nav == "kitchen" %}aria-current="page"{% endif %}>Dapur</a>
+      <a data-i="kitchen" href="/kitchen" {% if ctx.nav == "kitchen" %}aria-current="page"{% endif %}>Tiket dapur</a>
     {% endif %}
-    <form method="post" action="/logout"><button class="btn" type="submit">Keluar · {{ ctx.user }}</button></form>
+    </div>
+    <div class="me">
+      <div class="av" aria-hidden="true">{{ ctx.initial }}</div>
+      <div class="who"><b>{{ ctx.user }}</b><span>{{ ctx.role_label }}</span></div>
+      <form method="post" action="/logout"><button class="btn ghost" type="submit" aria-label="Keluar">Keluar</button></form>
+    </div>
   </nav>
   <main>{% block body %}{% endblock %}</main>
 </div>

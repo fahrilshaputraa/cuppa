@@ -13,7 +13,8 @@
     {% endfor %}
   {% endfor %}
   </div>
-  <div class="panel"><div class="field"><label for="tbl">Meja (opsional)</label><select id="tbl" name="table_id"><option value="">Bawa pulang / antre</option>{% for t in tables %}<option value="{{ t.id }}">Meja {{ t.label }}</option>{% endfor %}</select></div>
+  <div class="panel"><div class="field"><label for="ch">Tipe / sumber pesanan</label><select id="ch" name="channel"><option value="dine_in">Makan di tempat</option><option value="takeaway">Bawa pulang</option><option value="gofood">GoFood</option><option value="grabfood">GrabFood</option><option value="shopeefood">ShopeeFood</option></select></div>
+  <div class="field"><label for="tbl">Meja (opsional)</label><select id="tbl" name="table_id"><option value="">Bawa pulang / antre</option>{% for t in tables %}<option value="{{ t.id }}">Meja {{ t.label }}</option>{% endfor %}</select></div>
   <div class="field"><label for="note">Catatan</label><textarea id="note" name="note" maxlength="200"></textarea></div></div>
   <div class="total-bar"><div><strong class="value" data-cart-total>Belum ada item</strong><div class="muted small">Subtotal sebelum pajak &amp; layanan</div></div><button class="btn primary" type="submit" data-cart-submit>Simpan pesanan</button></div>
 </form>

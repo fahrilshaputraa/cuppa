@@ -369,6 +369,7 @@ pub async fn modifier_toggle(State(st): State<AppState>, staff: Staff, Path(mid)
 pub struct EditItem {
     name: String,
     price: i64,
+    cost: Option<i64>,
     stock: Option<String>,
 }
 
@@ -398,9 +399,10 @@ pub async fn item_edit(
         .fetch_optional(&mut *tx)
         .await?
         .ok_or(AppError::NotFound)?;
-    sqlx::query("UPDATE menu_items SET name=?, price=?, stock=?, available = CASE WHEN ? IS NOT NULL AND ? = 0 THEN 0 ELSE available END WHERE id=?")
+    sqlx::query("UPDATE menu_items SET name=?, price=?, cost=?, stock=?, available = CASE WHEN ? IS NOT NULL AND ? = 0 THEN 0 ELSE available END WHERE id=?")
         .bind(&name)
         .bind(f.price)
+        .bind(f.cost.unwrap_or(0).clamp(0, 100_000_000))
         .bind(stock)
         .bind(stock)
         .bind(stock)

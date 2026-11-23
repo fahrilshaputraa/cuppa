@@ -1,10 +1,11 @@
 {% extends "app.html" %}
 {% block title %}Struk #{{ d.number }}{% endblock %}
 {% block body %}
-<div class="row between no-print"><h1>Struk #{{ d.number }}</h1>
+<div class="page-head no-print"><h1>Struk #{{ d.number }}</h1>
   <div class="row">
     <button class="btn primary" type="button" data-print>Cetak (browser)</button>
     {% if has_printer %}<form method="post" action="/orders/{{ id }}/print"><button class="btn" type="submit">Cetak ke printer struk</button></form>{% endif %}
+    {% if let Some(w) = wa_url %}<a class="btn" href="{{ w }}" rel="noopener" target="_blank">Kirim lewat WhatsApp</a>{% endif %}
     <a class="btn" href="/orders/{{ id }}">Kembali</a>
   </div></div>
 {% if let Some(ok) = sent %}<div class="{% if ok %}notice{% else %}alert{% endif %} no-print" role="status">{% if ok %}Struk dikirim ke printer.{% else %}Printer tidak merespons. Periksa kabel/jaringan lalu coba lagi, atau cetak lewat browser.{% endif %}</div>{% endif %}
@@ -15,12 +16,14 @@
   {% for l in d.lines %}<div class="r"><span>{{ l.0 }}× {{ l.1 }}</span><span>{{ l.2 }}</span></div>{% endfor %}
   <hr>
   <div class="r"><span>Subtotal</span><span>{{ d.subtotal }}</span></div>
+  {% if let Some(x) = d.discount %}<div class="r"><span>Diskon</span><span>{{ x }}</span></div>{% endif %}
   <div class="r"><span>Service</span><span>{{ d.service }}</span></div>
   <div class="r"><span>Pajak</span><span>{{ d.tax }}</span></div>
+  {% if let Some(x) = d.rounding %}<div class="r"><span>Pembulatan</span><span>{{ x }}</span></div>{% endif %}
   <div class="r"><strong>TOTAL</strong><strong>{{ d.total }}</strong></div>
-  {% if let Some(m) = d.method %}<div class="r"><span>Bayar ({{ m }})</span><span>{% if let Some(t) = d.tendered %}{{ t }}{% else %}{{ d.total }}{% endif %}</span></div>{% endif %}
-  {% if let Some(c) = d.change %}<div class="r"><span>Kembali</span><span>{{ c }}</span></div>{% endif %}
+  {% for p in d.pays %}<div class="r"><span>Bayar ({{ p.0 }})</span><span>{{ p.1 }}</span></div>{% if let Some(c) = p.2 %}<div class="r"><span>Kembali</span><span>{{ c }}</span></div>{% endif %}{% endfor %}
   <hr>
   <div class="center">{{ d.footer }}</div>
 </div>
+{% if let Some(u) = share_url %}<p class="muted small no-print center">Tautan struk digital: {{ u }}</p>{% endif %}
 {% endblock %}

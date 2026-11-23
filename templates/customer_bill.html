@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Tagihan meja {{ table_label }}{% endblock %}
+{% block shell %}
+<div class="cust">
+  <h1>Meja {{ table_label }}</h1>
+  {% if let Some(c) = called %}<div class="notice" role="status">{% if c == "bill" %}Permintaan bill terkirim. Kasir akan segera datang.{% else %}Pelayan dipanggil. Mohon tunggu sebentar.{% endif %}</div>{% endif %}
+  {% for o in orders %}
+  <div class="panel"><div class="row between"><strong>Pesanan #{{ o.number }}</strong><span class="chip {{ o.status_class }}">{{ o.status_label }}</span></div>
+    <ul>{% for l in o.lines %}<li>{{ l }}</li>{% endfor %}</ul><div class="muted">{{ o.total }}</div></div>
+  {% else %}<div class="empty"><strong>Belum ada pesanan</strong>di meja ini hari ini.</div>{% endfor %}
+  {% if !orders.is_empty() %}<p><strong>Belum dibayar: {{ open_total }}</strong></p>{% endif %}
+  <div class="row">
+    <form method="post" action="/m/{{ token }}/call"><input type="hidden" name="kind" value="bill"><button class="btn primary" type="submit">Minta bill</button></form>
+    <form method="post" action="/m/{{ token }}/call"><input type="hidden" name="kind" value="waiter"><button class="btn" type="submit">Panggil pelayan</button></form>
+    <a class="btn" href="/m/{{ token }}">Tambah pesanan</a>
+  </div>
+</div>
+{% endblock %}

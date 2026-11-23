@@ -1,0 +1,24 @@
+{% extends "app.html" %}
+{% block title %}Voucher{% endblock %}
+{% block body %}
+<div class="page-head"><h1>Voucher</h1></div>
+{% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
+<form class="panel" method="post" action="/owner/vouchers">
+  <h3>Voucher baru</h3>
+  <div class="row">
+    <div class="field"><label for="vc">Kode</label><input id="vc" name="code" required maxlength="20" placeholder="HEMAT10" autocomplete="off"></div>
+    <div class="field"><label for="vk">Jenis</label><select id="vk" name="kind"><option value="pct">Persen</option><option value="rp">Rupiah</option></select></div>
+    <div class="field"><label for="vv">Nilai</label><input id="vv" name="value" type="number" min="1" required inputmode="numeric"></div>
+    <div class="field"><label for="vm">Minimal belanja (Rp)</label><input id="vm" name="min_subtotal" type="number" min="0" inputmode="numeric"></div>
+    <div class="field"><label for="vu">Maks. pemakaian</label><input id="vu" name="max_uses" type="number" min="1" inputmode="numeric" placeholder="tanpa batas"></div>
+  </div>
+  <button class="btn primary" type="submit">Buat voucher</button>
+</form>
+<div class="panel">
+{% if vouchers.is_empty() %}<div class="empty"><strong>Belum ada voucher</strong>Buat kode promo lalu kasir bisa memakainya di halaman pesanan</div>{% else %}
+<table class="ledger"><thead><tr><th>Kode</th><th>Potongan</th><th>Min. belanja</th><th class="num">Dipakai</th><th>Status</th><th></th></tr></thead><tbody>
+{% for v in vouchers %}<tr><td><code>{{ v.code }}</code></td><td>{{ v.value }}</td><td>{{ v.min }}</td><td class="num">{{ v.uses }}</td><td>{% if v.active %}<span class="chip ok">Aktif</span>{% else %}<span class="chip neutral">Nonaktif</span>{% endif %}</td>
+<td><form method="post" action="/owner/vouchers/{{ v.id }}/active"><button class="btn" type="submit">{% if v.active %}Nonaktifkan{% else %}Aktifkan{% endif %}</button></form></td></tr>{% endfor %}
+</tbody></table>{% endif %}
+</div>
+{% endblock %}

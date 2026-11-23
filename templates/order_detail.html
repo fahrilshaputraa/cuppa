@@ -1,7 +1,7 @@
 {% extends "app.html" %}
 {% block title %}Pesanan #{{ o.number }}{% endblock %}
 {% block body %}
-<h1>Pesanan #{{ o.number }} <span class="muted">· {{ where_label }}</span> <span class="chip {{ status_class }}">{{ status_label }}</span></h1>
+<div class="page-head"><h1>Pesanan #{{ o.number }} <span class="muted">· {{ where_label }}</span></h1><span class="chip {{ status_class }}">{{ status_label }}</span></div>
 {% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
 {% if let Some(n) = notice %}<div class="notice" role="status">{{ n }}</div>{% endif %}
 <div class="grid cols-2">
@@ -32,6 +32,10 @@
       <button class="btn" type="submit">Terapkan diskon</button>
     </form></details>
   {% endif %}
+  {% if can_discount && !has_partial %}
+  <details class="panel"><summary><strong>Voucher</strong></summary>
+    <form method="post" action="/orders/{{ o.id }}/voucher" class="row"><input name="code" placeholder="Kode voucher" required maxlength="20" aria-label="Kode voucher" autocomplete="off"><button class="btn" type="submit">Pakai</button></form></details>
+  {% endif %}
   {% if editable %}
   <details class="panel"><summary><strong>Pindah meja</strong></summary>
     <form method="post" action="/orders/{{ o.id }}/move" class="row"><select name="table_id" aria-label="Meja tujuan"><option value="">Bawa pulang / antre</option>{% for t in tables %}<option value="{{ t.id }}">Meja {{ t.label }}</option>{% endfor %}</select><button class="btn" type="submit">Pindahkan</button></form></details>
@@ -41,10 +45,12 @@
   {% if o.status == "confirmed" || o.status == "ready" %}
     <h3>Pembayaran</h3>
     {% if !shift_open %}<div class="alert">Buka shift dulu di menu Shift.</div>{% else %}
+    {% if has_partial %}<div class="notice">Sudah dibayar sebagian. Sisa tagihan {{ remaining_fmt }}.{% for p in paid_lines %}<br><span class="muted small">{{ p.0 }} {{ p.1 }}</span>{% endfor %}</div>{% endif %}
     <form method="post" action="/orders/{{ o.id }}/pay">
       <div class="field"><label for="m">Metode</label><select id="m" name="method" data-method><option value="cash">Tunai</option><option value="qris">QRIS</option><option value="card">Kartu EDC</option><option value="transfer">Transfer</option></select></div>
-      <div class="field" data-for="cash"><label for="t">Uang diterima (tunai)</label><input id="t" name="tendered" type="number" min="0" inputmode="numeric" value="{{ o.total }}" data-change="{{ o.total }}">
-        <div class="row chips"><button class="btn" type="button" data-fill="{{ o.total }}" data-target="t">Uang pas</button>{% for q in quick %}<button class="btn" type="button" data-fill="{{ q.0 }}" data-target="t">{{ q.1 }}</button>{% endfor %}</div>
+      <div class="field"><label for="amt">Nominal dibayar sekarang (kosongkan untuk melunasi {{ remaining_fmt }})</label><input id="amt" name="amount" type="number" min="1" max="{{ remaining }}" inputmode="numeric" placeholder="{{ remaining }}"></div>
+      <div class="field" data-for="cash"><label for="t">Uang diterima (tunai)</label><input id="t" name="tendered" type="number" min="0" inputmode="numeric" value="{{ remaining }}" data-change="{{ remaining }}">
+        <div class="row chips"><button class="btn" type="button" data-fill="{{ remaining }}" data-target="t">Uang pas</button>{% for q in quick %}<button class="btn" type="button" data-fill="{{ q.0 }}" data-target="t">{{ q.1 }}</button>{% endfor %}</div>
         <div id="change-out" class="change" aria-live="polite"></div></div>
       <div class="field" data-for="noncash" hidden><label for="r">Nomor referensi (approval / ID transaksi)</label><input id="r" name="reference" maxlength="60" autocomplete="off"></div>
       <button class="btn primary" type="submit">Terima pembayaran</button>

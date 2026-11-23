@@ -6,12 +6,12 @@ Honest status of every PRD requirement. ✅ done and tested · 🟡 partial · �
 | ID | Status | Notes |
 | --- | --- | --- |
 | FR-01 | ✅ | Token URL, no login, café name, open/closed banner (opening hours). |
-| FR-02 | 🟡 | Categories, prices, sold-out/low-stock labels. No photos yet. |
+| FR-02 | 🟡 | Categories, prices, sold-out/low-stock labels, variants. No photos yet. |
 | FR-03 | ✅ | Required/optional modifier groups with max selection; validated and priced on the server. |
 | FR-04 | 🟡 | Live subtotal + note; exact tax/service breakdown is computed and shown after submit. |
 | FR-05 | ✅ | Server re-prices; rejects sold-out/inactive items, inactive table, outside hours, oversell. |
 | FR-06 | ✅ | Live status page (polling every 5 s). |
-| FR-07 | 🟡 | Customers can place additional orders at the same table; no merged "table session" yet. |
+| FR-07 | ✅ | Additional orders at the same table + a table bill page listing every order of the day. |
 | FR-08 | ✅ | Combined queue, SSE refresh, beep on new QR order. |
 | FR-09 | ✅ | Confirm/reject with reason; auto-cancel after N minutes (stock restored). |
 | FR-10 | ✅ | Manual order, optional table, daily queue number. |
@@ -47,4 +47,7 @@ Honest status of every PRD requirement. ✅ done and tested · 🟡 partial · �
 | FR-40 | ✅ | Docker, systemd, nginx sample, install guide. |
 
 ## Additional (FR-41+)
-Not built yet: payment gateway (41–42), split/mixed payment (43), ingredient stock/recipes/expenses/profit (44–45), multi-branch (46, 60, 66), ratings (47, 58), advanced analytics (48), promos/vouchers (49), custom CSS/JS (50, 56 — needs a dedicated security review), 2FA/custom roles (51), digital receipts/WhatsApp (52), floor plan/merge tables/translation (53), Postgres migration tool (54), online-delivery sources (55), loyalty/customers (57), integrations (59), reservations (61), queue display/API (62), full offline mode (63), native wrappers (64), accounting (65).
+Built: FR-43 split/mixed payment, FR-45 (expenses + per-item cost → gross/net profit), FR-47 order rating, FR-49 vouchers (scheduled prices not built), FR-52 digital receipt link with WhatsApp share, FR-53 call waiter / ask for bill / table bill (merge-split tables and floor plan not built), FR-55 manual delivery channels (GoFood/GrabFood/ShopeeFood as source), FR-62 customer queue display (staff API/webhooks not built).
+
+Still not built:
+payment gateway (41–42), ingredient stock/recipes (44), multi-branch (46, 60, 66), per-menu rating (58), advanced analytics (48), custom CSS/JS (50, 56 — needs a dedicated security review), 2FA/custom roles (51), floor plan/merge tables/translation (53), Postgres + migration tool (36, 54), loyalty/customers (57), platform integrations (59), reservations (61), API/webhooks (62), full offline mode (63), native wrappers (64), accounting (65).

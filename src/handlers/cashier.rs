@@ -27,8 +27,27 @@ pub async fn page(State(st): State<AppState>, staff: Staff) -> AppResult<Html<St
 pub async fn queue(State(st): State<AppState>, staff: Staff) -> AppResult<Html<String>> {
     staff.require(&[Role::Owner, Role::Cashier])?;
     let orders = orders::queue_orders(&st, &["pending", "confirmed", "ready"]).await?;
-    let pending = orders.iter().filter(|o| o.status == "pending").count();
-    render(CashierQueue { orders, pending })
+    let calls: Vec<(String, String, String, i64)> = sqlx::query_as(
+        "SELECT c.id, t.label, c.kind, c.created_at FROM table_calls c JOIN tables t ON t.id = c.table_id WHERE c.handled_at IS NULL ORDER BY c.created_at",
+    )
+    .fetch_all(&st.db)
+    .await?;
+    let tz = st.cfg.tz_offset_hours;
+    let calls: Vec<CallView> = calls
+        .into_iter()
+        .map(|(id, label, kind, at)| CallView {
+            id,
+            label: format!("Meja {label}"),
+            kind_label: if kind == "bill" {
+                "minta bill"
+            } else {
+                "memanggil pelayan"
+            },
+            time: clock::hm(at, tz),
+        })
+        .collect();
+    let pending = orders.iter().filter(|o| o.status == "pending").count() + calls.len();
+    render(CashierQueue { orders, calls, pending })
 }
 
 pub async fn kitchen_page(State(st): State<AppState>, staff: Staff) -> AppResult<Html<String>> {
@@ -76,6 +95,14 @@ pub async fn new_post(
     Form(fields): Form<Vec<(String, String)>>,
 ) -> AppResult<Response> {
     staff.require(&[Role::Owner, Role::Cashier])?;
+    let channel = fields
+        .iter()
+        .find(|(k, _)| k == "channel")
+        .map(|(_, v)| v.clone())
+        .unwrap_or_else(|| "dine_in".into());
+    if !["dine_in", "takeaway", "gofood", "grabfood", "shopeefood"].contains(&channel.as_str()) {
+        return new_page(&st, &staff, Some("Tipe pesanan tidak valid.".into())).await;
+    }
     let (items, note, table) = match orders::parse_manual(fields).await {
         Ok(v) => v,
         Err(AppError::Invalid(m)) => return new_page(&st, &staff, Some(m)).await,
@@ -100,6 +127,7 @@ pub async fn new_post(
             cashier_id: Some(&staff.id),
             items,
             note,
+            channel: &channel,
         },
     )
     .await

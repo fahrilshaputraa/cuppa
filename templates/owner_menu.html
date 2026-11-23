@@ -34,6 +34,7 @@
           <form method="post" action="/owner/items/{{ i.id }}" class="row">
             <input name="name" value="{{ i.name }}" required maxlength="80" aria-label="Nama">
             <input name="price" type="number" min="0" value="{{ i.price }}" required inputmode="numeric" aria-label="Harga">
+            <input name="cost" type="number" min="0" value="{{ i.cost }}" placeholder="HPP" inputmode="numeric" aria-label="HPP per porsi">
             <input name="stock" type="number" min="0" value="{% if let Some(s) = i.stock %}{{ s }}{% endif %}" placeholder="Stok (opsional)" inputmode="numeric" aria-label="Stok">
             <button class="btn primary" type="submit">Simpan</button>
           </form></details>

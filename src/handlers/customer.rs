@@ -125,6 +125,7 @@ pub async fn submit(
             cashier_id: None,
             items,
             note,
+            channel: "dine_in",
         },
     )
     .await
@@ -158,36 +159,56 @@ pub async fn status(State(st): State<AppState>, Path((token, id)): Path<(String,
     })
 }
 
-pub async fn status_part(
-    State(st): State<AppState>,
-    Path((token, id)): Path<(String, String)>,
-) -> AppResult<Html<String>> {
+pub async fn status_part(State(st): State<AppState>, Path((token, id)): Path<(String, String)>) -> AppResult<Response> {
     let (id, _, status, total) = owned_order(&st, &token, &id).await?;
-    let lines: Vec<(i64, String)> = sqlx::query_as("SELECT qty, name FROM order_items WHERE order_id = ?")
-        .bind(&id)
-        .fetch_all(&st.db)
-        .await?;
+    let lines: Vec<(i64, String)> =
+        sqlx::query_as("SELECT qty, name FROM order_items WHERE order_id = ? AND voided = 0")
+            .bind(&id)
+            .fetch_all(&st.db)
+            .await?;
     let (class, label, hint) = match status.as_str() {
         "pending" => (
             "warn",
             "Menunggu konfirmasi kasir",
-            "Pesanan Anda sudah masuk. Kasir akan segera mengonfirmasi.",
+            "Pesanan Anda sudah masuk. Kasir akan segera mengonfirmasi",
         ),
-        "confirmed" => ("neutral", "Sedang disiapkan", "Pembayaran dilakukan di kasir."),
-        "ready" => ("ok", "Siap", "Pesanan Anda siap. Silakan bayar di kasir."),
-        "paid" => ("ok", "Selesai", "Terima kasih!"),
-        "voided" => ("danger", "Dibatalkan", "Pesanan dibatalkan."),
-        _ => (
-            "danger",
-            "Ditolak",
-            "Pesanan tidak dapat diproses. Silakan tanya kasir.",
-        ),
+        "confirmed" => ("neutral", "Sedang disiapkan", "Pembayaran dilakukan di kasir"),
+        "ready" => ("ok", "Siap", "Pesanan Anda siap. Silakan bayar di kasir"),
+        "paid" => ("ok", "Selesai", "Terima kasih"),
+        "voided" => ("danger", "Dibatalkan", "Pesanan dibatalkan"),
+        _ => ("danger", "Ditolak", "Pesanan tidak dapat diproses. Silakan tanya kasir"),
     };
-    render(CustomerStatusPart {
+    let paid = status == "paid";
+    let rated: Option<i64> = sqlx::query_scalar("SELECT stars FROM order_ratings WHERE order_id = ?")
+        .bind(&id)
+        .fetch_optional(&st.db)
+        .await?;
+    let receipt: Option<String> = if paid {
+        sqlx::query_scalar::<_, Option<String>>("SELECT receipt_token FROM orders WHERE id = ?")
+            .bind(&id)
+            .fetch_one(&st.db)
+            .await?
+            .map(|t| format!("/r/{t}"))
+    } else {
+        None
+    };
+    let html = render(CustomerStatusPart {
+        can_rate: paid && rated.is_none(),
+        rated,
+        token,
+        id,
+        receipt,
         class,
         label,
         hint,
         lines: lines.into_iter().map(|(q, n)| format!("{q}× {n}")).collect(),
         total: rupiah(total),
-    })
+    })?;
+    // 286 tells htmx to stop polling: final states no longer change, and the rating form must not be reset.
+    let code = if matches!(status.as_str(), "paid" | "voided" | "cancelled") {
+        axum::http::StatusCode::from_u16(286).unwrap_or(axum::http::StatusCode::OK)
+    } else {
+        axum::http::StatusCode::OK
+    };
+    Ok((code, html).into_response())
 }

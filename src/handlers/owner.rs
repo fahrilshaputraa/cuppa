@@ -21,6 +21,64 @@ fn owner(s: &Staff) -> AppResult<()> {
     s.require(&[Role::Owner])
 }
 
+/// Last-N-days sales as an inline SVG: one neutral line, today in the accent. Numbers only, safe to embed.
+fn sales_chart(points: &[(String, i64)]) -> String {
+    let (w, h, pl, pr, pt, pb) = (640.0_f64, 220.0_f64, 8.0_f64, 8.0_f64, 12.0_f64, 28.0_f64);
+    let max = points.iter().map(|p| p.1).max().unwrap_or(0).max(1) as f64;
+    let n = points.len().max(2) as f64;
+    let x = |i: usize| pl + (w - pl - pr) * i as f64 / (n - 1.0);
+    let y = |v: i64| pt + (h - pt - pb) * (1.0 - v as f64 / max);
+    let mut out =
+        format!("<svg class=\"chart\" viewBox=\"0 0 {w} {h}\" role=\"img\" aria-label=\"Penjualan per hari\">");
+    for g in 0..=3 {
+        let gy = pt + (h - pt - pb) * g as f64 / 3.0;
+        out.push_str(&format!(
+            "<line class=\"grid-line\" x1=\"{pl}\" x2=\"{}\" y1=\"{gy:.1}\" y2=\"{gy:.1}\"/>",
+            w - pr
+        ));
+    }
+    // smooth path (Catmull-Rom to cubic Bezier)
+    let pts: Vec<(f64, f64)> = points.iter().enumerate().map(|(i, p)| (x(i), y(p.1))).collect();
+    let curve = |from: usize, to: usize| -> String {
+        let mut d = format!("M{:.1} {:.1}", pts[from].0, pts[from].1);
+        for i in from..to {
+            let p0 = pts[i.saturating_sub(1)];
+            let (p1, p2) = (pts[i], pts[i + 1]);
+            let p3 = pts[(i + 2).min(pts.len() - 1)];
+            let (c1x, c1y) = (p1.0 + (p2.0 - p0.0) / 6.0, p1.1 + (p2.1 - p0.1) / 6.0);
+            let (c2x, c2y) = (p2.0 - (p3.0 - p1.0) / 6.0, p2.1 - (p3.1 - p1.1) / 6.0);
+            d.push_str(&format!(
+                " C{c1x:.1} {c1y:.1} {c2x:.1} {c2y:.1} {:.1} {:.1}",
+                p2.0, p2.1
+            ));
+        }
+        d
+    };
+    if pts.len() >= 2 {
+        let last = pts.len() - 1;
+        out.push_str(&format!("<path class=\"series\" d=\"{}\"/>", curve(0, last - 1)));
+        out.push_str(&format!("<path class=\"today\" d=\"{}\"/>", curve(last - 1, last)));
+    }
+    if let Some(l) = pts.last() {
+        out.push_str(&format!(
+            "<circle class=\"dot\" cx=\"{:.1}\" cy=\"{:.1}\" r=\"4\"/>",
+            l.0, l.1
+        ));
+    }
+    for (i, p) in points.iter().enumerate() {
+        if i % 3 == 0 || i + 1 == points.len() {
+            out.push_str(&format!(
+                "<text x=\"{:.1}\" y=\"{}\" text-anchor=\"middle\">{}</text>",
+                x(i),
+                h - 8.0,
+                &p.0[8..]
+            ));
+        }
+    }
+    out.push_str("</svg>");
+    out
+}
+
 pub async fn home(State(st): State<AppState>, staff: Staff) -> AppResult<Response> {
     owner(&staff)?;
     let done: i64 = sqlx::query_scalar("SELECT wizard_done FROM outlet_settings WHERE id = 1")
@@ -29,12 +87,29 @@ pub async fn home(State(st): State<AppState>, staff: Staff) -> AppResult<Respons
     if done == 0 {
         return Ok(Redirect::to("/owner/wizard").into_response());
     }
-    let day = clock::day(clock::now(), st.cfg.tz_offset_hours);
-    let (sales, paid): (i64, i64) =
-        sqlx::query_as("SELECT COALESCE(SUM(total),0), COUNT(*) FROM orders WHERE day = ? AND status = 'paid'")
-            .bind(&day)
+    let tz = st.cfg.tz_offset_hours;
+    let now = clock::now();
+    let day = clock::day(now, tz);
+    let yesterday = clock::day(now - 86_400, tz);
+    let net = |d: String| {
+        let st = st.clone();
+        async move {
+            let (sales, n): (i64, i64) =
+                sqlx::query_as("SELECT COALESCE(SUM(total),0), COUNT(*) FROM orders WHERE day = ? AND status = 'paid'")
+                    .bind(&d)
+                    .fetch_one(&st.db)
+                    .await?;
+            let refunds: i64 = sqlx::query_scalar(
+                "SELECT COALESCE(SUM(r.amount),0) FROM refunds r JOIN orders o ON o.id = r.order_id WHERE o.day = ?",
+            )
+            .bind(&d)
             .fetch_one(&st.db)
             .await?;
+            Ok::<(i64, i64), AppError>((sales - refunds, n))
+        }
+    };
+    let (sales, paid) = net(day.clone()).await?;
+    let (ysales, ypaid) = net(yesterday).await?;
     let voids: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM orders WHERE day = ? AND status = 'voided'")
         .bind(&day)
         .fetch_one(&st.db)
@@ -42,18 +117,49 @@ pub async fn home(State(st): State<AppState>, staff: Staff) -> AppResult<Respons
     let shift_open: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM shifts WHERE closed_at IS NULL)")
         .fetch_one(&st.db)
         .await?;
-    let refunds: i64 = sqlx::query_scalar(
-        "SELECT COALESCE(SUM(r.amount),0) FROM refunds r JOIN orders o ON o.id = r.order_id WHERE o.day = ?",
+    let mut series = Vec::new();
+    for back in (0..14).rev() {
+        let d = clock::day(now - back * 86_400, tz);
+        let (v, _) = net(d.clone()).await?;
+        series.push((d, v));
+    }
+    let top: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT i.name, SUM(i.qty) FROM order_items i JOIN orders o ON o.id = i.order_id WHERE o.day = ? AND o.status = 'paid' AND i.voided = 0 GROUP BY i.name ORDER BY 2 DESC LIMIT 5",
     )
     .bind(&day)
-    .fetch_one(&st.db)
+    .fetch_all(&st.db)
     .await?;
+    let top_max = top.iter().map(|t| t.1).max().unwrap_or(1).max(1);
+    let delta = |now_v: i64, prev: i64, money: bool| -> String {
+        if prev == 0 {
+            return "belum ada pembanding kemarin".into();
+        }
+        let diff = now_v - prev;
+        if diff == 0 {
+            return "sama dengan kemarin".into();
+        }
+        let pct = diff * 100 / prev;
+        let sign = if diff >= 0 { "+" } else { "−" };
+        let amt = if money {
+            rupiah(diff.abs())
+        } else {
+            diff.abs().to_string()
+        };
+        format!("{sign}{amt} ({sign}{}%) vs kemarin", pct.abs())
+    };
     Ok(render(OwnerHome {
         ctx: Ctx::staff(&st, &staff, "home").await?,
-        sales: rupiah(sales - refunds),
+        today_label: day.clone(),
+        sales: rupiah(sales),
+        sales_delta: delta(sales, ysales, true),
         paid_count: paid,
+        orders_delta: delta(paid, ypaid, false),
+        average: rupiah(if paid > 0 { sales / paid } else { 0 }),
         void_count: voids,
         shift_open,
+        chart: sales_chart(&series),
+        top: top.into_iter().map(|(n, q)| (n, q, format!("{q}"))).collect(),
+        top_max,
     })?
     .into_response())
 }
@@ -64,12 +170,13 @@ async fn menu_page(st: &AppState, staff: &Staff, error: Option<String>) -> AppRe
             .fetch_all(&st.db)
             .await?;
     let rows: Vec<ItemRow> = sqlx::query_as(
-        "SELECT m.id, m.name, c.name AS category, m.price, m.active, m.available, m.stock FROM menu_items m JOIN categories c ON c.id = m.category_id ORDER BY c.name, m.name",
+        "SELECT m.id, m.name, c.name AS category, m.price, m.active, m.available, m.stock, m.cost FROM menu_items m JOIN categories c ON c.id = m.category_id ORDER BY c.name, m.name",
     ).fetch_all(&st.db).await?;
     let items = rows
         .into_iter()
         .map(|r| ItemView {
             stock: r.stock,
+            cost: r.cost,
             price: r.price,
             id: r.id,
             name: r.name,

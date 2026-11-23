@@ -24,7 +24,7 @@ use axum::{
     routing::{get, post},
 };
 use futures_util::Stream;
-use handlers::{cashier, customer, extras, orders, owner, receipt, reports, session};
+use handlers::{admin, cashier, customer, extras, orders, owner, public, receipt, reports, session};
 use sqlx::SqlitePool;
 use std::{
     convert::Infallible,
@@ -79,6 +79,12 @@ pub fn router(st: AppState) -> Router {
         .route("/m/{token}/orders", post(customer::submit))
         .route("/m/{token}/orders/{id}", get(customer::status))
         .route("/m/{token}/orders/{id}/status", get(customer::status_part))
+        .route("/m/{token}/orders/{id}/rating", post(public::rate))
+        .route("/m/{token}/bill", get(public::bill))
+        .route("/m/{token}/call", post(public::call))
+        .route("/r/{token}", get(receipt::public))
+        .route("/display", get(public::display))
+        .route("/display/part", get(public::display_part))
         .layer(middleware::from_fn_with_state(st.clone(), security::throttle_public));
 
     let staff = Router::new()
@@ -99,6 +105,8 @@ pub fn router(st: AppState) -> Router {
         .route("/owner/settings", get(owner::settings).post(owner::save_settings))
         .route("/owner/audit", get(owner::audit_view))
         .route("/lock", get(extras::lock))
+        .route("/calls/{id}/done", post(public::call_done))
+        .route("/orders/{id}/voucher", post(orders::voucher))
         .route("/owner/wizard", get(extras::wizard_get).post(extras::wizard_post))
         .route("/owner/devices", get(extras::devices_get).post(extras::devices_add))
         .route("/owner/devices/{id}/revoke", post(extras::devices_revoke))
@@ -116,6 +124,9 @@ pub fn router(st: AppState) -> Router {
         .route("/orders/{id}/items/{item}/void", post(orders::void_item))
         .route("/orders/{id}/move", post(orders::move_table))
         .route("/orders/{id}/refund", post(orders::refund))
+        .route("/owner/vouchers", get(admin::vouchers_get).post(admin::vouchers_add))
+        .route("/owner/vouchers/{id}/active", post(admin::vouchers_toggle))
+        .route("/owner/expenses", get(admin::expenses_get).post(admin::expenses_add))
         .route("/owner/reports", get(reports::page))
         .route("/owner/reports.csv", get(reports::csv))
         .route("/owner/backup", post(owner::backup_download))

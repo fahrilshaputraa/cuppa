@@ -14,6 +14,13 @@
   <div class="panel stat"><div class="label">Rata-rata / pesanan</div><div class="value">{{ average }}</div></div>
   <div class="panel stat"><div class="label">Void</div><div class="value">{{ voids }}</div><div class="muted">{{ void_amount }}</div></div>
 </div>
+<div class="panel"><h3>Laba (tanpa pajak)</h3>
+  <div class="stat-row">
+    <div class="stat"><div class="label">HPP</div><div class="value">{{ cogs }}</div>{% if !has_cost %}<div class="delta">Isi HPP per menu di Menu → Ubah</div>{% endif %}</div>
+    <div class="stat"><div class="label">Laba kotor</div><div class="value">{{ gross }}</div></div>
+    <div class="stat"><div class="label">Biaya operasional</div><div class="value">{{ expenses }}</div></div>
+    <div class="stat"><div class="label">Laba bersih</div><div class="value">{{ net }}</div></div>
+  </div></div>
 <div class="grid cols-2">
   <div class="panel"><h3>Per hari</h3>
   {% if days.is_empty() %}<div class="empty"><strong>Belum ada penjualan</strong>pada rentang ini.</div>{% else %}

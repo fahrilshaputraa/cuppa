@@ -68,6 +68,11 @@ pub struct ReportPage {
     pub methods: Vec<Row2>,
     pub cashiers: Vec<Row2>,
     pub shifts: Vec<(String, String, String, String)>,
+    pub cogs: String,
+    pub gross: String,
+    pub expenses: String,
+    pub net: String,
+    pub has_cost: bool,
     pub max_day: i64,
     pub max_menu: i64,
 }
@@ -107,6 +112,19 @@ pub async fn page(State(st): State<AppState>, staff: Staff, Query(r): Query<Rang
     .await?;
     let refunds: i64 = sqlx::query_scalar("SELECT COALESCE(SUM(r.amount),0) FROM refunds r JOIN orders o ON o.id = r.order_id WHERE o.day BETWEEN ? AND ?").bind(&from).bind(&to).fetch_one(&st.db).await?;
     let sales = sales - refunds;
+    let cogs: i64 = sqlx::query_scalar("SELECT COALESCE(SUM(i.unit_cost * i.qty),0) FROM order_items i JOIN orders o ON o.id = i.order_id WHERE o.status='paid' AND i.voided = 0 AND o.day BETWEEN ? AND ?").bind(&from).bind(&to).fetch_one(&st.db).await?;
+    let revenue_ex_tax: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(total - tax),0) FROM orders WHERE status='paid' AND day BETWEEN ? AND ?",
+    )
+    .bind(&from)
+    .bind(&to)
+    .fetch_one(&st.db)
+    .await?;
+    let expenses: i64 = sqlx::query_scalar("SELECT COALESCE(SUM(amount),0) FROM expenses WHERE day BETWEEN ? AND ?")
+        .bind(&from)
+        .bind(&to)
+        .fetch_one(&st.db)
+        .await?;
     let (voids, void_amount): (i64, i64) = sqlx::query_as(
         "SELECT COUNT(*), COALESCE(SUM(total),0) FROM orders WHERE status='voided' AND day BETWEEN ? AND ?",
     )
@@ -128,6 +146,11 @@ pub async fn page(State(st): State<AppState>, staff: Staff, Query(r): Query<Rang
         orders,
         voids,
         void_amount: rupiah(void_amount),
+        cogs: rupiah(cogs),
+        gross: rupiah(revenue_ex_tax - cogs),
+        expenses: rupiah(expenses),
+        net: rupiah(revenue_ex_tax - cogs - expenses),
+        has_cost: cogs > 0,
         max_day: days.iter().map(|d| d.raw).max().unwrap_or(1).max(1),
         max_menu: menu.iter().map(|d| d.raw).max().unwrap_or(1).max(1),
         days,

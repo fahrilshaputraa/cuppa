@@ -42,11 +42,16 @@ document.addEventListener("change", (e) => {
 });
 
 document.addEventListener("input", (e) => {
+  if (e.target && e.target.id === "amt") {
+    const t = document.getElementById("t");
+    if (t) t.dispatchEvent(new Event("input", { bubbles: true }));
+  }
   const form = e.target instanceof Element ? e.target.closest("form[data-cart]") : null;
   if (form) recalc(form);
   const t = e.target;
   if (t instanceof HTMLInputElement && t.dataset.change) {
-    const total = parseInt(t.dataset.change, 10);
+    const amt = document.getElementById("amt");
+    const total = amt && amt.value ? parseInt(amt.value, 10) : parseInt(t.dataset.change, 10);
     const out = document.getElementById("change-out");
     if (out) {
       const diff = (parseInt(t.value || "0", 10) || 0) - total;

@@ -17,6 +17,15 @@ use axum::{
     response::{Html, IntoResponse, Redirect, Response},
 };
 
+pub fn method_label(m: &str) -> &str {
+    match m {
+        "cash" => "Tunai",
+        "qris" => "QRIS",
+        "card" => "Kartu",
+        _ => "Transfer",
+    }
+}
+
 pub struct Data {
     pub outlet: String,
     pub number: i64,
@@ -27,8 +36,10 @@ pub struct Data {
     pub service: i64,
     pub tax: i64,
     pub total: i64,
-    pub method: Option<String>,
-    pub tendered: Option<i64>,
+    pub discount: i64,
+    pub rounding: i64,
+    pub payments: Vec<(String, i64, Option<i64>)>,
+    pub token: Option<String>,
     pub footer: String,
     pub cols: usize,
     pub printer: Option<String>,
@@ -38,8 +49,8 @@ pub struct Data {
 pub async fn load(st: &AppState, id: &str) -> AppResult<Data> {
     let mut c = st.db.acquire().await?;
     let s = load_settings(&mut c).await?;
-    let o: (i64, i64, i64, i64, i64, i64, Option<String>) = sqlx::query_as(
-        "SELECT o.number, o.subtotal, o.service, o.tax, o.total, COALESCE(o.paid_at, o.created_at), t.label \
+    let o: (i64, i64, i64, i64, i64, i64, Option<String>, i64, i64) = sqlx::query_as(
+        "SELECT o.number, o.subtotal, o.service, o.tax, o.total, COALESCE(o.paid_at, o.created_at), t.label, o.discount, o.rounding \
          FROM orders o LEFT JOIN tables t ON t.id = o.table_id WHERE o.id = ?",
     )
     .bind(id)
@@ -51,9 +62,14 @@ pub async fn load(st: &AppState, id: &str) -> AppResult<Data> {
             .bind(id)
             .fetch_all(&mut *c)
             .await?;
-    let pay: Option<(String, Option<i64>)> = sqlx::query_as("SELECT method, tendered FROM payments WHERE order_id = ?")
+    let pays: Vec<(String, i64, Option<i64>)> =
+        sqlx::query_as("SELECT method, amount, tendered FROM payments WHERE order_id = ? ORDER BY created_at")
+            .bind(id)
+            .fetch_all(&mut *c)
+            .await?;
+    let token: Option<String> = sqlx::query_scalar("SELECT receipt_token FROM orders WHERE id = ?")
         .bind(id)
-        .fetch_optional(&mut *c)
+        .fetch_one(&mut *c)
         .await?;
     let tz = st.cfg.tz_offset_hours;
     Ok(Data {
@@ -69,8 +85,13 @@ pub async fn load(st: &AppState, id: &str) -> AppResult<Data> {
         service: o.2,
         tax: o.3,
         total: o.4,
-        method: pay.as_ref().map(|p| p.0.clone()),
-        tendered: pay.and_then(|p| p.1),
+        discount: o.7,
+        rounding: o.8,
+        payments: pays
+            .into_iter()
+            .map(|(m, a, t)| (method_label(&m).to_string(), a, t))
+            .collect(),
+        token,
         footer: s.receipt_footer,
         cols: s.paper_cols as usize,
         printer: s.printer_host,
@@ -89,11 +110,12 @@ fn bytes(d: &Data) -> Vec<u8> {
         service: d.service,
         tax: d.tax,
         total: d.total,
-        method: d.method.as_deref(),
-        tendered: d.tendered,
+        discount: d.discount,
+        rounding: d.rounding,
+        payments: &d.payments,
         footer: &d.footer,
         cols: d.cols,
-        open_drawer: d.drawer && d.method.as_deref() == Some("cash"),
+        open_drawer: d.drawer && d.payments.iter().any(|p| p.0 == "Tunai"),
     })
 }
 
@@ -178,6 +200,15 @@ pub struct ReceiptPage {
     pub id: String,
     pub sent: Option<bool>,
     pub has_printer: bool,
+    pub share_url: Option<String>,
+    pub wa_url: Option<String>,
+    pub d: ReceiptView,
+}
+
+#[derive(Template)]
+#[template(path = "public_receipt.html")]
+pub struct PublicReceiptPage {
+    pub ctx: Ctx,
     pub d: ReceiptView,
 }
 
@@ -188,13 +219,42 @@ pub struct ReceiptView {
     pub when: String,
     pub lines: Vec<(i64, String, String)>,
     pub subtotal: String,
+    pub discount: Option<String>,
     pub service: String,
     pub tax: String,
+    pub rounding: Option<String>,
     pub total: String,
-    pub method: Option<String>,
-    pub tendered: Option<String>,
-    pub change: Option<String>,
+    /// (label, amount shown, change)
+    pub pays: Vec<(String, String, Option<String>)>,
     pub footer: String,
+}
+
+fn view(d: Data) -> ReceiptView {
+    ReceiptView {
+        outlet: d.outlet,
+        number: d.number,
+        where_label: d.where_label,
+        when: d.when,
+        lines: d.lines.into_iter().map(|l| (l.qty, l.name, rupiah(l.amount))).collect(),
+        subtotal: rupiah(d.subtotal),
+        discount: (d.discount > 0).then(|| format!("−{}", rupiah(d.discount))),
+        service: rupiah(d.service),
+        tax: rupiah(d.tax),
+        rounding: (d.rounding != 0).then(|| rupiah(d.rounding)),
+        total: rupiah(d.total),
+        pays: d
+            .payments
+            .iter()
+            .map(|(m, a, t)| {
+                (
+                    m.clone(),
+                    rupiah(t.unwrap_or(*a)),
+                    t.filter(|t| t > a).map(|t| rupiah(t - a)),
+                )
+            })
+            .collect(),
+        footer: d.footer,
+    }
 }
 
 pub async fn page(
@@ -205,41 +265,57 @@ pub async fn page(
 ) -> AppResult<Response> {
     staff.require(&[Role::Owner, Role::Cashier])?;
     let d = load(&st, &id).await?;
-    let change = d
-        .tendered
-        .filter(|t| *t > d.total && d.method.as_deref() == Some("cash"))
-        .map(|t| rupiah(t - d.total));
-    let method_label = d.method.as_deref().map(|m| {
-        match m {
-            "cash" => "Tunai",
-            "qris" => "QRIS",
-            "card" => "Kartu",
-            _ => "Transfer",
-        }
-        .to_string()
+    let share_url = d
+        .token
+        .as_ref()
+        .map(|t| format!("{}/r/{}", st.cfg.public_url.trim_end_matches('/'), t));
+    let wa_url = share_url.as_ref().map(|u| {
+        format!(
+            "https://wa.me/?text={}",
+            pct_encode(&format!("Struk {}: {}", d.outlet, u))
+        )
     });
-    let view = ReceiptView {
-        outlet: d.outlet,
-        number: d.number,
-        where_label: d.where_label,
-        when: d.when,
-        lines: d.lines.into_iter().map(|l| (l.qty, l.name, rupiah(l.amount))).collect(),
-        subtotal: rupiah(d.subtotal),
-        service: rupiah(d.service),
-        tax: rupiah(d.tax),
-        total: rupiah(d.total),
-        method: method_label,
-        tendered: d.tendered.map(rupiah),
-        change,
-        footer: d.footer,
-    };
+    let has_printer = d.printer.is_some();
     let sent = q.get("sent").map(|v| v == "1");
     let page = ReceiptPage {
         ctx: Ctx::staff(&st, &staff, "cashier").await?,
         id,
         sent,
-        has_printer: d.printer.is_some(),
-        d: view,
+        has_printer,
+        share_url,
+        wa_url,
+        d: view(d),
     };
     Ok(Html(page.render().map_err(|e| anyhow::anyhow!("template: {e}"))?).into_response())
+}
+
+/// Digital receipt (FR-52): unguessable 128-bit link, read-only, no staff data.
+pub async fn public(State(st): State<AppState>, Path(token): Path<String>) -> AppResult<Response> {
+    if token.len() != 32 || !token.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(AppError::NotFound);
+    }
+    let id: String =
+        sqlx::query_scalar("SELECT id FROM orders WHERE receipt_token = ? AND status IN ('paid','voided')")
+            .bind(&token)
+            .fetch_optional(&st.db)
+            .await?
+            .ok_or(AppError::NotFound)?;
+    let d = load(&st, &id).await?;
+    let page = PublicReceiptPage {
+        ctx: Ctx::guest(&st).await?,
+        d: view(d),
+    };
+    Ok(Html(page.render().map_err(|e| anyhow::anyhow!("template: {e}"))?).into_response())
+}
+
+fn pct_encode(s: &str) -> String {
+    s.bytes()
+        .map(|b| {
+            if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) {
+                (b as char).to_string()
+            } else {
+                format!("%{b:02X}")
+            }
+        })
+        .collect()
 }

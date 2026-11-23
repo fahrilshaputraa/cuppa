@@ -2,8 +2,9 @@
 {% block title %}Pasang Cuppa{% endblock %}
 {% block shell %}
 <div class="login"><form class="panel" method="post" action="/setup" autocomplete="off">
-  <h1>Selamat datang</h1>
-  <p class="muted">Buat akun owner pertama. Kode pemasangan ada di log server saat Cuppa dijalankan.</p>
+  <div class="brand">cup<span>pa</span></div>
+  <h2>Pasang Cuppa</h2>
+  <p class="muted">Buat akun owner pertama. Kode pemasangan ada di log server saat Cuppa dijalankan</p>
   {% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
   <div class="field"><label for="code">Kode pemasangan</label><input id="code" name="code" required maxlength="64" autocomplete="off"></div>
   <div class="field"><label for="outlet">Nama kafe</label><input id="outlet" name="outlet" required maxlength="60"></div>
