@@ -1,0 +1,4 @@
+# Pin the toolchain so local and CI lint results match. Bump deliberately.
+[toolchain]
+channel = "1.96.0"
+components = ["rustfmt", "clippy"]

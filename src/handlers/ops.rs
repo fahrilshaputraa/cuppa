@@ -216,26 +216,29 @@ fn api_error(code: axum::http::StatusCode, msg: &str) -> Response {
 }
 
 /// Bearer auth for the read-only API. Keys are looked up by hash; each key is rate limited. Errors are JSON, not HTML.
-async fn api_auth(st: &AppState, headers: &HeaderMap) -> Result<(), Response> {
+async fn api_auth(st: &AppState, headers: &HeaderMap) -> Result<(), Box<Response>> {
     use axum::http::StatusCode;
     let Some(token) = headers
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
     else {
-        return Err(api_error(StatusCode::UNAUTHORIZED, "missing bearer token"));
+        return Err(Box::new(api_error(StatusCode::UNAUTHORIZED, "missing bearer token")));
     };
     let h = auth::hash_token(token.trim());
     if !st.limiter.allow(&format!("api:{h}"), 120, Duration::from_secs(60)) {
-        return Err(api_error(StatusCode::TOO_MANY_REQUESTS, "rate limit exceeded"));
+        return Err(Box::new(api_error(
+            StatusCode::TOO_MANY_REQUESTS,
+            "rate limit exceeded",
+        )));
     }
     let id: Option<String> = sqlx::query_scalar("SELECT id FROM api_keys WHERE token_hash = ? AND revoked = 0")
         .bind(&h)
         .fetch_optional(&st.db)
         .await
-        .map_err(|_| api_error(StatusCode::INTERNAL_SERVER_ERROR, "error"))?;
+        .map_err(|_| Box::new(api_error(StatusCode::INTERNAL_SERVER_ERROR, "error")))?;
     let Some(id) = id else {
-        return Err(api_error(StatusCode::FORBIDDEN, "invalid or revoked key"));
+        return Err(Box::new(api_error(StatusCode::FORBIDDEN, "invalid or revoked key")));
     };
     let _ = sqlx::query("UPDATE api_keys SET last_used = ? WHERE id = ?")
         .bind(clock::now())
@@ -269,7 +272,7 @@ pub async fn api_sales(
     Query(r): Query<ApiRange>,
 ) -> AppResult<Response> {
     if let Err(r) = api_auth(&st, &headers).await {
-        return Ok(r);
+        return Ok(*r);
     }
     let today = clock::day(clock::now(), st.cfg.tz_offset_hours);
     let (from, to) = (r.from.unwrap_or_else(|| today.clone()), r.to.unwrap_or(today));
@@ -284,7 +287,7 @@ pub async fn api_sales(
 /// `GET /api/v1/menu` — active menu with prices.
 pub async fn api_menu(State(st): State<AppState>, headers: HeaderMap) -> AppResult<Response> {
     if let Err(r) = api_auth(&st, &headers).await {
-        return Ok(r);
+        return Ok(*r);
     }
     let rows: Vec<(String, String, i64, i64)> = sqlx::query_as("SELECT m.name, c.name, m.price, m.available FROM menu_items m JOIN categories c ON c.id = m.category_id WHERE m.active = 1 AND c.active = 1 ORDER BY c.name, m.name").fetch_all(&st.db).await?;
     let items: Vec<_> = rows
