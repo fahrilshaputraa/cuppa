@@ -3,6 +3,7 @@
 {% block body %}
 <h1>Pengaturan</h1>
 {% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
+{% if let Some(n) = notice %}<div class="notice" role="status">{{ n }}</div>{% endif %}
 <form class="panel" method="post" action="/owner/settings">
   <div class="field"><label for="outlet">Nama kafe</label><input id="outlet" name="outlet_name" value="{{ s.outlet_name }}" required maxlength="60"></div>
   <div class="field"><label for="tax">Pajak (%) — sesuai perda daerah Anda</label><input id="tax" name="tax_pct" value="{{ tax_pct }}" required inputmode="decimal"></div>
@@ -10,7 +11,18 @@
   <div class="field"><label><input type="checkbox" name="tax_inclusive" value="1" {% if s.tax_inclusive == 1 %}checked{% endif %}> Harga menu sudah termasuk pajak</label></div>
   <div class="field"><label><input type="checkbox" name="service_in_tax_base" value="1" {% if s.service_in_tax_base == 1 %}checked{% endif %}> Service charge masuk dasar pajak</label></div>
   <div class="field"><label><input type="checkbox" name="qr_ordering" value="1" {% if s.qr_ordering == 1 %}checked{% endif %}> Pesanan QR aktif</label></div>
+  <h3>Printer struk (opsional)</h3>
+  <div class="field"><label for="ph">Alamat printer LAN</label><input id="ph" name="printer_host" value="{% if let Some(h) = s.printer_host %}{{ h }}{% endif %}" placeholder="192.168.1.50:9100" maxlength="40"></div>
+  <div class="field"><label for="pc">Lebar kertas</label><select id="pc" name="paper_cols"><option value="32" {% if s.paper_cols == 32 %}selected{% endif %}>58 mm</option><option value="42" {% if s.paper_cols == 42 %}selected{% endif %}>80 mm (42 kolom)</option><option value="48" {% if s.paper_cols == 48 %}selected{% endif %}>80 mm (48 kolom)</option></select></div>
+  <div class="field"><label for="rf">Teks bawah struk</label><input id="rf" name="receipt_footer" value="{{ s.receipt_footer }}" maxlength="80"></div>
+  <div class="field"><label><input type="checkbox" name="open_drawer_on_cash" value="1" {% if s.open_drawer_on_cash == 1 %}checked{% endif %}> Buka laci kas saat bayar tunai</label></div>
   <p class="muted">Perubahan hanya berlaku untuk pesanan baru.</p>
   <button class="btn primary" type="submit">Simpan</button>
 </form>
+<div class="grid cols-2">
+  <form class="panel" method="post" action="/owner/printer/test"><h3>Tes printer</h3><p class="muted">Cetak halaman uji dan picu laci kas. Simpan alamat printer dulu.</p><button class="btn" type="submit">Tes cetak</button></form>
+  <div class="panel"><h3>Backup data</h3><p class="muted">Cadangan otomatis harian disimpan di <code>data/backups</code> (14 terakhir). Unduh salinan sendiri dan simpan di luar server.</p>
+  {% if !backups.is_empty() %}<ul>{% for b in backups %}<li>{{ b }}</li>{% endfor %}</ul>{% endif %}
+  <form method="post" action="/owner/backup"><button class="btn" type="submit">Unduh backup sekarang</button></form></div>
+</div>
 {% endblock %}

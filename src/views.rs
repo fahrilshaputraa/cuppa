@@ -149,6 +149,10 @@ pub struct SettingsRow {
     pub service_in_tax_base: i64,
     pub qr_ordering: i64,
     pub confirm_timeout_min: i64,
+    pub printer_host: Option<String>,
+    pub paper_cols: i64,
+    pub receipt_footer: String,
+    pub open_drawer_on_cash: i64,
 }
 
 #[derive(Template)]
@@ -156,6 +160,8 @@ pub struct SettingsRow {
 pub struct OwnerSettings {
     pub ctx: Ctx,
     pub error: Option<String>,
+    pub notice: Option<String>,
+    pub backups: Vec<String>,
     pub s: SettingsRow,
     pub tax_pct: String,
     pub service_pct: String,
@@ -223,6 +229,7 @@ pub struct MenuRow {
 pub struct MenuItemView {
     pub id: String,
     pub name: String,
+    pub price: i64,
     pub price_fmt: String,
     pub available: i64,
 }
@@ -266,6 +273,7 @@ pub struct OrderDetail {
     pub total: String,
     pub status_label: &'static str,
     pub status_class: &'static str,
+    pub quick: Vec<(i64, String)>,
     pub shift_open: bool,
     pub void_denied: bool,
 }
@@ -322,6 +330,7 @@ pub fn group_menu(rows: Vec<MenuRow>) -> Vec<MenuCategoryView> {
         let item = MenuItemView {
             id: r.id,
             name: r.name,
+            price: r.price,
             price_fmt: crate::money::rupiah(r.price),
             available: r.available,
         };

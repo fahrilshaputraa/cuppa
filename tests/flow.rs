@@ -659,3 +659,220 @@ async fn blind_shift_close_reports_difference() {
         r.body
     );
 }
+
+async fn paid_order(a: &App, owner: &str) -> (String, String) {
+    let (token, item, cashier) = seed(a, owner).await;
+    send(
+        a,
+        "POST",
+        "/cashier/shift/open",
+        Some(&cashier),
+        Some("opening=0"),
+        true,
+    )
+    .await;
+    send(
+        a,
+        "POST",
+        &format!("/m/{token}/orders"),
+        None,
+        Some(&format!("qty_{item}=2")),
+        true,
+    )
+    .await;
+    let oid: String = sqlx::query_scalar("SELECT id FROM orders")
+        .fetch_one(&a.st.db)
+        .await
+        .unwrap();
+    send(
+        a,
+        "POST",
+        &format!("/orders/{oid}/confirm"),
+        Some(&cashier),
+        Some(""),
+        true,
+    )
+    .await;
+    let r = send(
+        a,
+        "POST",
+        &format!("/orders/{oid}/pay"),
+        Some(&cashier),
+        Some("method=cash&tendered=100000"),
+        true,
+    )
+    .await;
+    assert_eq!(loc(&r), format!("/orders/{oid}/receipt"));
+    (oid, cashier)
+}
+
+#[tokio::test]
+async fn receipt_reports_csv_and_backup() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let (oid, cashier) = paid_order(&a, &owner).await;
+
+    let rc = send(
+        &a,
+        "GET",
+        &format!("/orders/{oid}/receipt"),
+        Some(&cashier),
+        None,
+        false,
+    )
+    .await;
+    assert!(
+        rc.body.contains("Rp55.000") && rc.body.contains("Kembali") && rc.body.contains("Rp45.000"),
+        "{}",
+        rc.body
+    );
+
+    let rep = send(&a, "GET", "/owner/reports", Some(&owner), None, false).await;
+    assert_eq!(rep.status, StatusCode::OK);
+    assert!(rep.body.contains("Rp55.000") && rep.body.contains("Latte") && rep.body.contains("Tunai"));
+    let csv = send(&a, "GET", "/owner/reports.csv", Some(&owner), None, false).await;
+    assert!(csv.body.starts_with("day,number") && csv.body.contains("55000"));
+    assert!(
+        csv.headers[header::CONTENT_DISPOSITION]
+            .to_str()
+            .unwrap()
+            .starts_with("attachment")
+    );
+    assert_eq!(
+        send(&a, "GET", "/owner/reports?from=bad", Some(&owner), None, false)
+            .await
+            .status,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+
+    // Reports and backups are owner-only.
+    for p in ["/owner/reports", "/owner/reports.csv"] {
+        assert_eq!(
+            send(&a, "GET", p, Some(&cashier), None, false).await.status,
+            StatusCode::FORBIDDEN
+        );
+    }
+    assert_eq!(
+        send(&a, "POST", "/owner/backup", Some(&cashier), Some(""), true)
+            .await
+            .status,
+        StatusCode::FORBIDDEN
+    );
+    let b = send(&a, "POST", "/owner/backup", Some(&owner), Some(""), true).await;
+    assert_eq!(b.status, StatusCode::OK);
+    assert!(b.body.starts_with("SQLite format 3"));
+    let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM audit_log WHERE action='backup.downloaded'")
+        .fetch_one(&a.st.db)
+        .await
+        .unwrap();
+    assert_eq!(n, 1);
+}
+
+#[tokio::test]
+async fn printer_must_be_on_the_lan_and_settings_validate() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let base = "outlet_name=K&tax_pct=10&service_pct=5&paper_cols=32&receipt_footer=Thx";
+    let bad = send(
+        &a,
+        "POST",
+        "/owner/settings",
+        Some(&owner),
+        Some(&format!("{base}&printer_host=8.8.8.8:9100")),
+        true,
+    )
+    .await;
+    assert!(bad.body.contains("jaringan lokal"));
+    let ok = send(
+        &a,
+        "POST",
+        "/owner/settings",
+        Some(&owner),
+        Some(&format!("{base}&printer_host=192.168.1.50:9100")),
+        true,
+    )
+    .await;
+    assert!(ok.body.contains("Pengaturan disimpan"));
+    // nothing listens there: test print reports a friendly failure instead of hanging or crashing
+    let t = send(&a, "POST", "/owner/printer/test", Some(&owner), Some(""), true).await;
+    assert_eq!(t.status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn pages_have_no_inline_script_or_style() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let (oid, _) = paid_order(&a, &owner).await;
+    let tid: String = sqlx::query_scalar("SELECT id FROM tables")
+        .fetch_one(&a.st.db)
+        .await
+        .unwrap();
+    let token: String = sqlx::query_scalar("SELECT token FROM tables")
+        .fetch_one(&a.st.db)
+        .await
+        .unwrap();
+    for p in [
+        "/owner".to_string(),
+        "/owner/menu".into(),
+        "/owner/tables".into(),
+        format!("/owner/tables/{tid}/qr"),
+        "/owner/staff".into(),
+        "/owner/settings".into(),
+        "/owner/audit".into(),
+        "/owner/reports".into(),
+        "/cashier".into(),
+        "/cashier/new".into(),
+        "/cashier/shift".into(),
+        "/kitchen".into(),
+        format!("/orders/{oid}"),
+        format!("/orders/{oid}/receipt"),
+        format!("/m/{token}"),
+    ] {
+        let r = send(&a, "GET", &p, Some(&owner), None, false).await;
+        assert_eq!(r.status, StatusCode::OK, "{p}");
+        assert!(!r.body.contains(" style="), "inline style in {p}");
+        let inline = r
+            .body
+            .match_indices("<script")
+            .filter(|(i, _)| !r.body[*i..].starts_with("<script src="))
+            .count();
+        assert_eq!(inline, 0, "inline script in {p}");
+    }
+}
+
+#[tokio::test]
+async fn customer_cannot_see_other_tables_orders() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let (token, item, _) = seed(&a, &owner).await;
+    send(&a, "POST", "/owner/tables", Some(&owner), Some("label=2"), true).await;
+    let token2: String = sqlx::query_scalar("SELECT token FROM tables WHERE label='2'")
+        .fetch_one(&a.st.db)
+        .await
+        .unwrap();
+    send(
+        &a,
+        "POST",
+        &format!("/m/{token}/orders"),
+        None,
+        Some(&format!("qty_{item}=1")),
+        true,
+    )
+    .await;
+    let oid: String = sqlx::query_scalar("SELECT id FROM orders")
+        .fetch_one(&a.st.db)
+        .await
+        .unwrap();
+    assert_eq!(
+        send(&a, "GET", &format!("/m/{token2}/orders/{oid}"), None, None, false)
+            .await
+            .status,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        send(&a, "GET", &format!("/m/{token}/orders/{oid}"), None, None, false)
+            .await
+            .status,
+        StatusCode::OK
+    );
+}

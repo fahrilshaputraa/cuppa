@@ -15,9 +15,9 @@ Small cafés lose money in three places: cash leakage (fake voids and discounts,
 
 ## Features (v0.1)
 
-- **Cashier** — live queue (QR + manual orders), confirm/reject, cash/QRIS/card/transfer, change calculation, blind shift close with Z report.
+- **Cashier** — live queue (QR + manual orders), confirm/reject, cash/QRIS/card/transfer, one-tap cash chips with live change, receipts (browser print or ESC/POS LAN printer + cash drawer), blind shift close with Z report.
 - **Customer QR ordering** — scan the table QR, no app, no login. Prices are always recomputed on the server.
-- **Owner** — menu & categories (never hard-deleted), tables + printable QR, tax/service settings, staff, audit log.
+- **Owner** — menu & categories (never hard-deleted), tables + printable QR, tax/service settings, staff, sales/menu/method/cashier reports + CSV export, audit log, printer test, daily automatic backups + one-click download.
 - **Kitchen** — ticket screen with "ready" action.
 - **Money rules** — integer rupiah, price copied into order lines, paid orders locked by the database, void needs a *second owner's* credentials + reason.
 - **Realtime** — Server-Sent Events, no websockets, no JS framework (HTMX).
@@ -72,8 +72,8 @@ Stack: Axum · SQLx (SQLite WAL) · Askama · HTMX · SSE. Design system: [DESIG
 
 ## Roadmap
 
-Built: foundation, master data, QR ordering, cash/non-cash payment, shifts, void with approval, audit.
-Next (PRD order): ESC/POS receipt & drawer, sales/tax reports + CSV, backups & restore test, per-user permission overrides, modifiers, Postgres, split bill, payment gateway, stock & recipes, multi-branch.
+Built: foundation, master data, QR ordering, payments, shifts, void with approval, audit, receipts + ESC/POS, reports + CSV, backups.
+Next (PRD order): item modifiers/variants, discounts with supervisor approval, per-user permission overrides, restore tooling, Postgres, split bill, payment gateway, stock & recipes, multi-branch, offline mode.
 
 ## License
 

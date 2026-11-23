@@ -116,6 +116,19 @@ async fn fetch_order(conn: &mut SqliteConnection, id: &str) -> AppResult<OrderFu
     .ok_or(AppError::NotFound)
 }
 
+/// Next round banknote amounts above the total (50k, 100k, ...) for one-tap tendering.
+fn quick_cash(total: i64) -> Vec<i64> {
+    let mut v: Vec<i64> = [20_000, 50_000, 100_000, 200_000]
+        .into_iter()
+        .map(|b| ((total + b - 1) / b) * b)
+        .filter(|x| *x > total)
+        .collect();
+    v.sort();
+    v.dedup();
+    v.truncate(3);
+    v
+}
+
 fn status_meta(s: &str) -> (&'static str, &'static str) {
     match s {
         "pending" => ("Menunggu konfirmasi", "warn"),
@@ -158,6 +171,7 @@ async fn render_detail(st: &AppState, staff: &Staff, id: &str, error: Option<Str
         service: rupiah(o.service),
         tax: rupiah(o.tax),
         total: rupiah(o.total),
+        quick: quick_cash(o.total).into_iter().map(|v| (v, rupiah(v))).collect(),
         status_label: label,
         status_class: class,
         shift_open,
@@ -321,7 +335,8 @@ pub async fn pay(
     audit::record(&mut tx, e).await?;
     tx.commit().await?;
     notify(&st);
-    Ok(Redirect::to(&format!("/orders/{id}")).into_response())
+    super::receipt::auto_print(st.clone(), id.clone());
+    Ok(Redirect::to(&format!("/orders/{id}/receipt")).into_response())
 }
 
 #[derive(Deserialize)]

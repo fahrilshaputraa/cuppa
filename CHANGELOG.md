@@ -9,4 +9,6 @@ Format: [Keep a Changelog](https://keepachangelog.com), versioning: [SemVer](htt
 - First-run setup code, Argon2id PIN/passphrase login, lockout, server-side sessions.
 - Menu, tables + QR, staff, settings (tax/service), append-only audit log.
 - QR customer ordering with server-side pricing; cashier queue, payments, shifts with blind close, void with second-owner approval.
+- Receipts (printable HTML + ESC/POS over LAN, cash drawer pulse, LAN-only printer guard), owner reports + CSV export (formula-injection safe), daily rotating backups + audited download.
+- UX: quantity steppers with live subtotal, quick-cash chips with live change, grouped navigation, mobile bottom nav.
 - DESIGN.md design system, CI (fmt, clippy, test, cargo-deny, RustSec), Dockerfile.

@@ -3,6 +3,8 @@ pub mod cashier;
 pub mod customer;
 pub mod orders;
 pub mod owner;
+pub mod receipt;
+pub mod reports;
 pub mod session;
 
 use crate::{error::AppError, money::TaxRules, views::SettingsRow};
@@ -10,7 +12,7 @@ use sqlx::SqliteConnection;
 
 pub async fn load_settings(conn: &mut SqliteConnection) -> Result<SettingsRow, AppError> {
     Ok(sqlx::query_as(
-        "SELECT outlet_name, tax_bp, service_bp, tax_inclusive, service_in_tax_base, qr_ordering, confirm_timeout_min FROM outlet_settings WHERE id = 1",
+        "SELECT outlet_name, tax_bp, service_bp, tax_inclusive, service_in_tax_base, qr_ordering, confirm_timeout_min, printer_host, paper_cols, receipt_footer, open_drawer_on_cash FROM outlet_settings WHERE id = 1",
     )
     .fetch_one(conn)
     .await?)

@@ -4,10 +4,12 @@
 
 pub mod audit;
 pub mod auth;
+pub mod backup;
 pub mod clock;
 pub mod config;
 pub mod db;
 pub mod error;
+pub mod escpos;
 pub mod handlers;
 pub mod money;
 pub mod rand_id;
@@ -22,7 +24,7 @@ use axum::{
     routing::{get, post},
 };
 use futures_util::Stream;
-use handlers::{cashier, customer, orders, owner, session};
+use handlers::{cashier, customer, orders, owner, receipt, reports, session};
 use sqlx::SqlitePool;
 use std::{
     convert::Infallible,
@@ -96,6 +98,12 @@ pub fn router(st: AppState) -> Router {
         .route("/owner/staff/{id}/active", post(owner::toggle_staff))
         .route("/owner/settings", get(owner::settings).post(owner::save_settings))
         .route("/owner/audit", get(owner::audit_view))
+        .route("/owner/reports", get(reports::page))
+        .route("/owner/reports.csv", get(reports::csv))
+        .route("/owner/backup", post(owner::backup_download))
+        .route("/owner/printer/test", post(owner::printer_test))
+        .route("/orders/{id}/receipt", get(receipt::page))
+        .route("/orders/{id}/print", post(receipt::print))
         .route("/cashier", get(cashier::page))
         .route("/cashier/queue", get(cashier::queue))
         .route("/cashier/new", get(cashier::new_get).post(cashier::new_post))
@@ -145,6 +153,9 @@ pub fn spawn_housekeeping(st: AppState) {
                 Ok(r) if r.rows_affected() > 0 => orders::notify(&st),
                 Err(e) => tracing::warn!(error = ?e, "housekeeping failed"),
                 _ => {}
+            }
+            if let Err(e) = backup::daily(&st).await {
+                tracing::warn!(error = ?e, "daily backup failed");
             }
             // Drop expired sessions.
             let _ = sqlx::query("DELETE FROM sessions WHERE expires_at < ?")

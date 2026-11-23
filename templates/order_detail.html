@@ -19,13 +19,16 @@
     <h3>Pembayaran</h3>
     {% if !shift_open %}<div class="alert">Buka shift dulu di menu Shift.</div>{% else %}
     <form method="post" action="/orders/{{ o.id }}/pay">
-      <div class="field"><label for="m">Metode</label><select id="m" name="method"><option value="cash">Tunai</option><option value="qris">QRIS</option><option value="card">Kartu EDC</option><option value="transfer">Transfer</option></select></div>
-      <div class="field"><label for="t">Uang diterima (tunai)</label><input id="t" name="tendered" type="number" min="0" inputmode="numeric" value="{{ o.total }}"></div>
-      <div class="field"><label for="r">Nomor referensi (non-tunai)</label><input id="r" name="reference" maxlength="60" autocomplete="off"></div>
+      <div class="field"><label for="m">Metode</label><select id="m" name="method" data-method><option value="cash">Tunai</option><option value="qris">QRIS</option><option value="card">Kartu EDC</option><option value="transfer">Transfer</option></select></div>
+      <div class="field" data-for="cash"><label for="t">Uang diterima (tunai)</label><input id="t" name="tendered" type="number" min="0" inputmode="numeric" value="{{ o.total }}" data-change="{{ o.total }}">
+        <div class="row chips"><button class="btn" type="button" data-fill="{{ o.total }}" data-target="t">Uang pas</button>{% for q in quick %}<button class="btn" type="button" data-fill="{{ q.0 }}" data-target="t">{{ q.1 }}</button>{% endfor %}</div>
+        <div id="change-out" class="change" aria-live="polite"></div></div>
+      <div class="field" data-for="noncash" hidden><label for="r">Nomor referensi (approval / ID transaksi)</label><input id="r" name="reference" maxlength="60" autocomplete="off"></div>
       <button class="btn primary" type="submit">Terima pembayaran</button>
     </form>{% endif %}
   {% else if o.status == "paid" %}
     <h3>Lunas</h3>
+    <p><a class="btn" href="/orders/{{ o.id }}/receipt">Lihat / cetak struk</a></p>
     <p class="muted">Pesanan terkunci. Koreksi hanya lewat void dengan persetujuan owner.</p>
     {% if !void_denied %}
     <form method="post" action="/orders/{{ o.id }}/void">
