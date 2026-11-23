@@ -50,15 +50,27 @@ pub async fn queue(State(st): State<AppState>, staff: Staff) -> AppResult<Html<S
     render(CashierQueue { orders, calls, pending })
 }
 
-pub async fn kitchen_page(State(st): State<AppState>, staff: Staff) -> AppResult<Html<String>> {
+pub async fn kitchen_page(
+    State(st): State<AppState>,
+    staff: Staff,
+    axum::extract::Query(q): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> AppResult<Html<String>> {
     staff.require(&[Role::Owner, Role::Kitchen])?;
     if !Ctx::guest(&st).await?.kitchen {
         return Err(AppError::Invalid(
             "Mode dapur belum diaktifkan. Nyalakan di Pengaturan → Alur dapur.".into(),
         ));
     }
+    let stations: Vec<(String, String)> = sqlx::query_as("SELECT id, name FROM stations ORDER BY name")
+        .fetch_all(&st.db)
+        .await?;
     render(KitchenPage {
         ctx: Ctx::staff(&st, &staff, "kitchen").await?,
+        stations,
+        station_q: q
+            .get("station")
+            .filter(|v| v.len() <= 40 && v.bytes().all(|b| b.is_ascii_alphanumeric()))
+            .cloned(),
     })
 }
 

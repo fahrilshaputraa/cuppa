@@ -15,3 +15,13 @@
   <button class="btn primary" type="submit">Kirim</button>
 </form>
 {% else if let Some(r) = rated %}<p class="muted">Terima kasih atas nilai {{ r }}/5</p>{% endif %}
+{% if can_join %}
+<details class="panel"><summary><strong>Gabung loyalty</strong> <span class="muted small">opsional</span></summary>
+<form method="post" action="/m/{{ token }}/orders/{{ id }}/loyalty">
+  <p class="muted small">Kami menyimpan nama dan nomor HP Anda hanya untuk poin dan penawaran kafe ini. Anda bisa minta datanya dihapus kapan saja.</p>
+  <div class="field"><label for="ln">Nama</label><input id="ln" name="name" required maxlength="60"></div>
+  <div class="field"><label for="lp">Nomor HP</label><input id="lp" name="phone" required inputmode="tel" maxlength="20"></div>
+  <div class="field"><label><input type="checkbox" name="consent" value="1" required> Saya setuju data saya disimpan untuk program loyalty</label></div>
+  <button class="btn primary" type="submit">Gabung</button>
+</form></details>
+{% endif %}

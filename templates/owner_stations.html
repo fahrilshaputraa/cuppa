@@ -1,0 +1,19 @@
+{% extends "app.html" %}
+{% block title %}Stasiun{% endblock %}
+{% block body %}
+<div class="page-head"><h1>Stasiun dapur dan bar</h1></div>
+{% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
+<p class="muted">Petakan kategori menu ke stasiun. Layar dapur bisa difilter per stasiun, dan tiket tercetak ke printer stasiun itu (mode "Sampai dapur").</p>
+<form class="panel" method="post" action="/owner/stations">
+  <h3>Stasiun baru</h3>
+  <div class="row"><div class="field"><label for="sn">Nama</label><input id="sn" name="name" required maxlength="30" placeholder="Bar"></div>
+  <div class="field"><label for="sp">Printer LAN (opsional)</label><input id="sp" name="printer_host" maxlength="40" placeholder="192.168.1.52:9100"></div></div>
+  <button class="btn primary" type="submit">Tambah stasiun</button>
+</form>
+<div class="panel"><h3>Kategori dan stasiun</h3>
+{% if categories.is_empty() %}<div class="empty"><strong>Belum ada kategori</strong>Tambah kategori di menu dulu</div>{% else %}
+<table class="ledger"><tbody>
+{% for c in categories %}<tr><td>{{ c.1 }}</td><td>
+<form method="post" action="/owner/categories/{{ c.0 }}/station" class="row"><select name="station_id" aria-label="Stasiun untuk {{ c.1 }}"><option value="">Tanpa stasiun (printer dapur utama)</option>{% for s in stations %}<option value="{{ s.0 }}" {% if s.0 == c.2 %}selected{% endif %}>{{ s.1 }}</option>{% endfor %}</select><button class="btn" type="submit">Simpan</button></form></td></tr>{% endfor %}
+</tbody></table>{% endif %}</div>
+{% endblock %}

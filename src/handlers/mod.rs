@@ -3,6 +3,7 @@ pub mod admin;
 pub mod cashier;
 pub mod customer;
 pub mod extras;
+pub mod more;
 pub mod orders;
 pub mod owner;
 pub mod public;
@@ -64,7 +65,7 @@ pub fn hours_text(s: &SettingsRow) -> String {
 /// Active menu grouped by category, with modifier groups attached. Used by customer and cashier screens.
 pub async fn load_menu(st: &AppState) -> Result<Vec<MenuCategoryView>, AppError> {
     let rows: Vec<MenuRow> = sqlx::query_as(
-        "SELECT m.id, m.name, m.price, m.available, m.stock, c.name AS category FROM menu_items m JOIN categories c ON c.id = m.category_id \
+        "SELECT m.id, m.name, m.price, m.available, m.stock, m.photo, c.name AS category FROM menu_items m JOIN categories c ON c.id = m.category_id \
          WHERE m.active = 1 AND c.active = 1 ORDER BY c.sort_order, c.name, m.name",
     )
     .fetch_all(&st.db)
@@ -108,6 +109,7 @@ pub async fn load_menu(st: &AppState) -> Result<Vec<MenuCategoryView>, AppError>
     let mut out: Vec<MenuCategoryView> = Vec::new();
     for r in rows {
         let item = MenuItemView {
+            photo: r.photo,
             groups: by_menu.remove(&r.id).unwrap_or_default(),
             stock: r.stock,
             id: r.id,

@@ -1,0 +1,27 @@
+{% extends "app.html" %}
+{% block title %}Reservasi{% endblock %}
+{% block body %}
+<div class="page-head"><h1>Reservasi</h1></div>
+{% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
+<form class="panel" method="post" action="/cashier/reservations">
+  <h3>Reservasi baru</h3>
+  <div class="row">
+    <div class="field"><label for="rn">Nama</label><input id="rn" name="name" required maxlength="60"></div>
+    <div class="field"><label for="rp">Nomor HP</label><input id="rp" name="phone" maxlength="20" inputmode="tel"></div>
+    <div class="field"><label for="rd">Tanggal</label><input id="rd" type="date" name="day" value="{{ today }}" required></div>
+    <div class="field"><label for="rt">Jam</label><input id="rt" type="time" name="time" required></div>
+    <div class="field"><label for="rx">Tamu</label><input id="rx" name="pax" type="number" min="1" max="200" value="2" required></div>
+    <div class="field"><label for="rdep">Uang muka (Rp)</label><input id="rdep" name="deposit" type="number" min="0" inputmode="numeric"></div>
+  </div>
+  <div class="field"><label for="rno">Catatan</label><input id="rno" name="note" maxlength="120"></div>
+  <button class="btn primary" type="submit">Simpan reservasi</button>
+</form>
+<div class="panel">
+{% if rows.is_empty() %}<div class="empty"><strong>Belum ada reservasi mendatang</strong>Reservasi hari ini dan seterusnya muncul di sini</div>{% else %}
+<table class="ledger"><thead><tr><th>Waktu</th><th>Nama</th><th class="num">Tamu</th><th class="num">Uang muka</th><th>Status</th><th></th></tr></thead><tbody>
+{% for r in rows %}<tr><td>{{ r.when }}</td><td>{{ r.name }}{% if !r.phone.is_empty() %}<div class="muted small">{{ r.phone }}</div>{% endif %}{% if !r.note.is_empty() %}<div class="muted small">{{ r.note }}</div>{% endif %}</td><td class="num">{{ r.pax }}</td><td class="num">{{ r.deposit }}</td>
+<td>{% if r.status == "arrived" %}<span class="chip ok">{{ r.status_label }}</span>{% else if r.status == "cancelled" %}<span class="chip danger">{{ r.status_label }}</span>{% else %}<span class="chip warn">{{ r.status_label }}</span>{% endif %}</td>
+<td class="row">{% if r.status == "booked" %}<form method="post" action="/reservations/{{ r.id }}/status"><input type="hidden" name="status" value="arrived"><button class="btn" type="submit">Hadir</button></form><form method="post" action="/reservations/{{ r.id }}/status"><input type="hidden" name="status" value="cancelled"><button class="btn danger" type="submit">Batalkan</button></form>{% endif %}</td></tr>{% endfor %}
+</tbody></table>{% endif %}
+</div>
+{% endblock %}

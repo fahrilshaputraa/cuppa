@@ -478,7 +478,7 @@ pub async fn ready(State(st): State<AppState>, staff: Staff, Path(id): Path<Stri
 /// A second person (owner) authorises a sensitive action with their own credentials.
 /// An owner acting alone may re-enter their own passphrase (still audited as approver).
 pub async fn approve(st: &AppState, actor: &Staff, name: &str, secret: &str) -> Result<Staff, String> {
-    match auth::check_credentials(&st.db, name, secret).await {
+    match auth::check_credentials(&st.db, name, secret, auth::Second::Skip).await {
         Ok(a) if a.role == Role::Owner && (a.id != actor.id || actor.role == Role::Owner) => Ok(a),
         Ok(_) => Err("Penyetuju harus owner (bukan kasir yang sama).".into()),
         Err(_) => Err("Kredensial penyetuju salah atau terkunci.".into()),

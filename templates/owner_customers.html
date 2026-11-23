@@ -1,0 +1,13 @@
+{% extends "app.html" %}
+{% block title %}Pelanggan{% endblock %}
+{% block body %}
+<div class="page-head"><h1>Pelanggan loyalty</h1></div>
+<p class="muted">Hanya pelanggan yang menyetujui di halaman pesanan. Hapus data pelanggan kapan saja: penjualan tetap tercatat tanpa nama.</p>
+<div class="panel">
+{% if rows.is_empty() %}<div class="empty"><strong>Belum ada pelanggan</strong>Pelanggan bisa bergabung setelah pesanan QR dibayar</div>{% else %}
+<table class="ledger"><thead><tr><th>Nama</th><th>HP</th><th class="num">Kunjungan</th><th class="num">Total belanja</th><th class="num">Poin</th><th>Menu favorit</th><th></th></tr></thead><tbody>
+{% for c in rows %}<tr><td>{{ c.name }}</td><td class="muted">{{ c.phone }}</td><td class="num">{{ c.visits }}</td><td class="num">{{ c.spend }}</td><td class="num">{{ c.points }}</td><td>{{ c.favorite }}</td>
+<td><form method="post" action="/owner/customers/{{ c.id }}/erase"><button class="btn danger" type="submit">Hapus data</button></form></td></tr>{% endfor %}
+</tbody></table>{% endif %}
+</div>
+{% endblock %}

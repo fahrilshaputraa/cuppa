@@ -23,3 +23,25 @@ pub fn day(ts: i64, tz: i8) -> String {
 pub fn hm(ts: i64, tz: i8) -> String {
     local(ts, tz).format(HM).unwrap_or_default()
 }
+
+/// Parse local `YYYY-MM-DD` + `HH:MM` into a UTC unix timestamp for an outlet offset.
+pub fn local_to_ts(day: &str, hm: &str, tz: i8) -> Option<i64> {
+    let d: Vec<&str> = day.split('-').collect();
+    let t: Vec<&str> = hm.split(':').collect();
+    if d.len() != 3 || t.len() != 2 {
+        return None;
+    }
+    let date = time::Date::from_calendar_date(
+        d[0].parse().ok()?,
+        time::Month::try_from(d[1].parse::<u8>().ok()?).ok()?,
+        d[2].parse().ok()?,
+    )
+    .ok()?;
+    let tm = time::Time::from_hms(t[0].parse().ok()?, t[1].parse().ok()?, 0).ok()?;
+    let off = UtcOffset::from_hms(tz, 0, 0).ok()?;
+    Some(
+        time::PrimitiveDateTime::new(date, tm)
+            .assume_offset(off)
+            .unix_timestamp(),
+    )
+}

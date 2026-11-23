@@ -14,6 +14,9 @@
       <a data-i="expenses" href="/owner/expenses" {% if ctx.nav == "expenses" %}aria-current="page"{% endif %}>Biaya</a>
       <a data-i="staff" href="/owner/staff" {% if ctx.nav == "staff" %}aria-current="page"{% endif %}>Staf</a>
       <a data-i="devices" href="/owner/devices" {% if ctx.nav == "devices" %}aria-current="page"{% endif %}>Perangkat</a>
+      <a data-i="stations" href="/owner/stations" {% if ctx.nav == "stations" %}aria-current="page"{% endif %}>Stasiun</a>
+      <a data-i="customers" href="/owner/customers" {% if ctx.nav == "customers" %}aria-current="page"{% endif %}>Pelanggan</a>
+      <a data-i="security" href="/owner/security" {% if ctx.nav == "security" %}aria-current="page"{% endif %}>Keamanan akun</a>
       <a data-i="settings" href="/owner/settings" {% if ctx.nav == "settings" %}aria-current="page"{% endif %}>Pengaturan</a>
       <a data-i="audit" href="/owner/audit" {% if ctx.nav == "audit" %}aria-current="page"{% endif %}>Log audit</a>
     {% endif %}
@@ -22,6 +25,7 @@
       <a data-i="queue" href="/cashier" {% if ctx.nav == "cashier" %}aria-current="page"{% endif %}>Antrean</a>
       <a data-i="new" href="/cashier/new" {% if ctx.nav == "new" %}aria-current="page"{% endif %}>Pesanan baru</a>
       <a data-i="history" href="/cashier/history" {% if ctx.nav == "history" %}aria-current="page"{% endif %}>Riwayat</a>
+      <a data-i="reservations" href="/cashier/reservations" {% if ctx.nav == "reservations" %}aria-current="page"{% endif %}>Reservasi</a>
       <a data-i="shift" href="/cashier/shift" {% if ctx.nav == "shift" %}aria-current="page"{% endif %}>Shift</a>
     {% endif %}
     {% if ctx.kitchen && (ctx.role == "kitchen" || ctx.role == "owner") %}

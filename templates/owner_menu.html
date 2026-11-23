@@ -26,7 +26,7 @@
   <tbody>
   {% for i in items %}
     <tr>
-      <td>{{ i.name }}</td><td class="muted">{{ i.category }}</td><td class="num">{{ i.price_fmt }}</td>
+      <td class="row">{% if let Some(ph) = i.photo %}<img class="thumb sm" src="/uploads/{{ ph }}" alt="" width="40" height="40" loading="lazy">{% endif %}{{ i.name }}</td><td class="muted">{{ i.category }}</td><td class="num">{{ i.price_fmt }}</td>
       <td class="num">{% if let Some(s) = i.stock %}{{ s }}{% else %}<span class="muted">—</span>{% endif %}</td>
       <td>{% if i.available == 0 %}<span class="chip warn">Habis</span>{% else if i.active == 0 %}<span class="chip neutral">Nonaktif</span>{% else %}<span class="chip ok">Tersedia</span>{% endif %}</td>
       <td class="row">
@@ -37,7 +37,8 @@
             <input name="cost" type="number" min="0" value="{{ i.cost }}" placeholder="HPP" inputmode="numeric" aria-label="HPP per porsi">
             <input name="stock" type="number" min="0" value="{% if let Some(s) = i.stock %}{{ s }}{% endif %}" placeholder="Stok (opsional)" inputmode="numeric" aria-label="Stok">
             <button class="btn primary" type="submit">Simpan</button>
-          </form></details>
+          </form>
+          <form method="post" action="/owner/items/{{ i.id }}/photo" enctype="multipart/form-data" class="row"><input type="file" name="photo" accept="image/jpeg,image/png,image/webp" required aria-label="Foto menu"><button class="btn" type="submit">Unggah foto</button></form></details>
         <a class="btn" href="/owner/items/{{ i.id }}/modifiers">Varian</a>
         <form method="post" action="/owner/items/{{ i.id }}/available"><button class="btn" type="submit">{% if i.available == 0 %}Tersedia{% else %}Tandai habis{% endif %}</button></form>
         <form method="post" action="/owner/items/{{ i.id }}/active"><button class="btn" type="submit">{% if i.active == 0 %}Aktifkan{% else %}Nonaktifkan{% endif %}</button></form>

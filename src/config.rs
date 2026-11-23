@@ -36,6 +36,11 @@ impl Config {
         })
     }
 
+    /// Where re-encoded menu photos live (next to the database). `None` for in-memory databases.
+    pub fn uploads_dir(&self) -> Option<std::path::PathBuf> {
+        crate::backup::dir_for(&self.database_url).map(|b| b.with_file_name("uploads"))
+    }
+
     pub fn for_tests() -> Self {
         Self {
             bind: "127.0.0.1:0".parse().unwrap(),

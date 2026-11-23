@@ -865,6 +865,10 @@ async fn pages_have_no_inline_script_or_style() {
         "/cashier/shift".into(),
         "/cashier/history".into(),
         "/owner/vouchers".into(),
+        "/owner/stations".into(),
+        "/owner/customers".into(),
+        "/owner/security".into(),
+        "/cashier/reservations".into(),
         "/owner/expenses".into(),
         "/display".into(),
         "/owner/devices".into(),
@@ -2004,4 +2008,429 @@ async fn profit_report_uses_cost_snapshot_and_expenses() {
         "{}",
         rep.body
     );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Photos, 2FA, stations, reservations, loyalty
+// ---------------------------------------------------------------------------------------------
+
+async fn send_multipart(a: &App, uri: &str, cookie: &str, filename: &str, data: &[u8]) -> Res {
+    let boundary = "----cuppaTestBoundary";
+    let mut body = Vec::new();
+    body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"{filename}\"\r\nContent-Type: application/octet-stream\r\n\r\n").as_bytes());
+    body.extend_from_slice(data);
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+    let mut req = Request::builder()
+        .method("POST")
+        .uri(uri)
+        .header(header::HOST, "localhost:8080")
+        .header(header::ORIGIN, "http://localhost:8080")
+        .header(header::COOKIE, cookie)
+        .header(
+            header::CONTENT_TYPE,
+            format!("multipart/form-data; boundary={boundary}"),
+        )
+        .body(Body::from(body))
+        .unwrap();
+    req.extensions_mut()
+        .insert(ConnectInfo("10.0.0.9:5555".parse::<SocketAddr>().unwrap()));
+    let r = a.app.clone().oneshot(req).await.unwrap();
+    let (p, body) = r.into_parts();
+    Res {
+        status: p.status,
+        headers: p.headers,
+        body: String::from_utf8_lossy(&body.collect().await.unwrap().to_bytes()).into(),
+    }
+}
+
+#[tokio::test]
+async fn photo_upload_is_reencoded_validated_and_served_safely() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let (token, item, cashier) = seed(&a, &owner).await;
+    let png = std::fs::read("tests/tiny.png").unwrap();
+    // A cashier cannot upload; a text file pretending to be an image is refused.
+    assert_eq!(
+        send_multipart(&a, &format!("/owner/items/{item}/photo"), &cashier, "x.png", &png)
+            .await
+            .status,
+        StatusCode::FORBIDDEN
+    );
+    let bad = send_multipart(
+        &a,
+        &format!("/owner/items/{item}/photo"),
+        &owner,
+        "evil.png",
+        b"<script>alert(1)</script>",
+    )
+    .await;
+    assert_eq!(bad.status, StatusCode::UNPROCESSABLE_ENTITY);
+    let ok = send_multipart(
+        &a,
+        &format!("/owner/items/{item}/photo"),
+        &owner,
+        "../../etc/passwd.png",
+        &png,
+    )
+    .await;
+    assert_eq!(ok.status, StatusCode::SEE_OTHER, "{}", ok.body);
+    let name: String = db_one(&a, "SELECT photo FROM menu_items").await;
+    assert!(
+        name.ends_with(".jpg") && name.len() == 36,
+        "server picks the file name, never the client: {name}"
+    );
+    // Served publicly as image/jpeg and re-encoded (JPEG magic, not the uploaded PNG).
+    let r = send(&a, "GET", &format!("/uploads/{name}"), None, None, false).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(r.headers[header::CONTENT_TYPE], "image/jpeg");
+    // Path traversal and unknown names are rejected.
+    for bad in ["..%2F..%2Fetc%2Fpasswd", "x.jpg", &format!("{}.png", &name[..32])] {
+        assert_eq!(
+            send(&a, "GET", &format!("/uploads/{bad}"), None, None, false)
+                .await
+                .status,
+            StatusCode::NOT_FOUND,
+            "{bad}"
+        );
+    }
+    // The customer menu shows the picture.
+    assert!(
+        send(&a, "GET", &format!("/m/{token}"), None, None, false)
+            .await
+            .body
+            .contains(&format!("/uploads/{name}"))
+    );
+    // Replacing the photo deletes the old file.
+    let dir = a.st.cfg.uploads_dir().unwrap();
+    send_multipart(&a, &format!("/owner/items/{item}/photo"), &owner, "n.png", &png).await;
+    assert!(!dir.join(&name).exists());
+}
+
+#[tokio::test]
+async fn owner_two_factor_login_enable_replay_and_disable() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let page = send(&a, "GET", "/owner/security", Some(&owner), None, false).await;
+    assert!(page.body.contains("<svg") && page.body.contains("Aktifkan"));
+    let pending: String = db_one(&a, "SELECT totp_pending FROM users").await;
+    // Compute the current code the way an authenticator app would.
+    let now = cuppa::clock::now();
+    let secret = hex::decode(&pending).unwrap();
+    let code = |t: i64| -> String {
+        use hmac::{Hmac, KeyInit, Mac};
+        let mut m = <Hmac<sha1::Sha1> as KeyInit>::new_from_slice(&secret).unwrap();
+        m.update(&((t / 30) as u64).to_be_bytes());
+        let h = m.finalize().into_bytes();
+        let o = (h[19] & 15) as usize;
+        let n = ((h[o] as u32 & 0x7f) << 24) | ((h[o + 1] as u32) << 16) | ((h[o + 2] as u32) << 8) | h[o + 3] as u32;
+        format!("{:06}", n % 1_000_000)
+    };
+    let wrong = send(
+        &a,
+        "POST",
+        "/owner/security/enable",
+        Some(&owner),
+        Some("code=000000"),
+        true,
+    )
+    .await;
+    assert!(wrong.body.contains("Kode salah"));
+    let en = send(
+        &a,
+        "POST",
+        "/owner/security/enable",
+        Some(&owner),
+        Some(&format!("code={}", code(now))),
+        true,
+    )
+    .await;
+    assert!(en.body.contains("2FA") && en.body.contains("Aktif"), "{}", en.body);
+    // Password alone no longer logs in; the page asks for the code.
+    let r = login(&a, "Ana", "correct+horse+battery").await;
+    assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+    assert!(r.body.contains("6 digit"));
+    // The code used to enable cannot be replayed...
+    let replay = send(
+        &a,
+        "POST",
+        "/login",
+        None,
+        Some(&format!("name=Ana&secret=correct+horse+battery&code={}", code(now))),
+        true,
+    )
+    .await;
+    assert_eq!(replay.status, StatusCode::UNAUTHORIZED);
+    // ...a wrong code fails, and the next time-step code works.
+    let bad = send(
+        &a,
+        "POST",
+        "/login",
+        None,
+        Some("name=Ana&secret=correct+horse+battery&code=123456"),
+        true,
+    )
+    .await;
+    assert_eq!(bad.status, StatusCode::UNAUTHORIZED);
+    let good = send(
+        &a,
+        "POST",
+        "/login",
+        None,
+        Some(&format!(
+            "name=Ana&secret=correct+horse+battery&code={}",
+            code(now + 30)
+        )),
+        true,
+    )
+    .await;
+    assert_eq!(good.status, StatusCode::SEE_OTHER, "{}", good.body);
+    // Wrong second factors count toward lockout like wrong passwords.
+    for _ in 0..5 {
+        send(
+            &a,
+            "POST",
+            "/login",
+            None,
+            Some("name=Ana&secret=correct+horse+battery&code=111111"),
+            true,
+        )
+        .await;
+    }
+    let locked = send(
+        &a,
+        "POST",
+        "/login",
+        None,
+        Some(&format!(
+            "name=Ana&secret=correct+horse+battery&code={}",
+            code(now + 60)
+        )),
+        true,
+    )
+    .await;
+    assert!(locked.body.contains("dikunci"), "{}", locked.body);
+}
+
+#[tokio::test]
+async fn stations_filter_kitchen_screen_and_assign_categories() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let (token, item, cashier) = seed(&a, &owner).await;
+    send(
+        &a,
+        "POST",
+        "/owner/stations",
+        Some(&owner),
+        Some("name=Bar&printer_host=8.8.8.8:9100"),
+        true,
+    )
+    .await; // public IP refused
+    assert_eq!(db_one::<i64>(&a, "SELECT COUNT(*) FROM stations").await, 0);
+    send(
+        &a,
+        "POST",
+        "/owner/stations",
+        Some(&owner),
+        Some("name=Bar&printer_host=192.168.1.52:9100"),
+        true,
+    )
+    .await;
+    send(&a, "POST", "/owner/stations", Some(&owner), Some("name=Dapur"), true).await;
+    let (bar, dapur): (String, String) = (
+        db_one(&a, "SELECT id FROM stations WHERE name='Bar'").await,
+        db_one(&a, "SELECT id FROM stations WHERE name='Dapur'").await,
+    );
+    let cat: String = db_one(&a, "SELECT id FROM categories").await;
+    send(
+        &a,
+        "POST",
+        &format!("/owner/categories/{cat}/station"),
+        Some(&owner),
+        Some(&format!("station_id={bar}")),
+        true,
+    )
+    .await;
+    send(&a, "POST", "/owner/settings", Some(&owner), Some("outlet_name=K&tax_pct=10&service_pct=0&paper_cols=32&receipt_footer=x&round_to=0&discount_pct=10&theme=copper&qr_ordering=1&kitchen_mode=1"), true).await;
+    send(
+        &a,
+        "POST",
+        &format!("/m/{token}/orders"),
+        None,
+        Some(&format!("qty_{item}=1")),
+        true,
+    )
+    .await;
+    let oid: String = db_one(&a, "SELECT id FROM orders").await;
+    send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/confirm"),
+        Some(&cashier),
+        Some(""),
+        true,
+    )
+    .await;
+    let at_bar = send(
+        &a,
+        "GET",
+        &format!("/kitchen/tickets?station={bar}"),
+        Some(&owner),
+        None,
+        false,
+    )
+    .await;
+    assert!(at_bar.body.contains("Latte"));
+    let at_kitchen = send(
+        &a,
+        "GET",
+        &format!("/kitchen/tickets?station={dapur}"),
+        Some(&owner),
+        None,
+        false,
+    )
+    .await;
+    assert!(!at_kitchen.body.contains("Latte") && at_kitchen.body.contains("Tidak ada tiket"));
+    assert_eq!(
+        send(&a, "GET", "/owner/stations", Some(&cashier), None, false)
+            .await
+            .status,
+        StatusCode::FORBIDDEN
+    );
+}
+
+#[tokio::test]
+async fn reservations_validate_and_change_status() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let (_, _, cashier) = seed(&a, &owner).await;
+    let bad = send(
+        &a,
+        "POST",
+        "/cashier/reservations",
+        Some(&cashier),
+        Some("name=Sari&day=2099-02-31&time=19:00&pax=4"),
+        true,
+    )
+    .await;
+    assert!(bad.body.contains("wajib diisi"));
+    let ok = send(
+        &a,
+        "POST",
+        "/cashier/reservations",
+        Some(&cashier),
+        Some("name=Sari&phone=0812-345&day=2099-12-24&time=19:30&pax=4&deposit=50000"),
+        true,
+    )
+    .await;
+    assert_eq!(ok.status, StatusCode::SEE_OTHER, "{}", ok.body);
+    let id: String = db_one(&a, "SELECT id FROM reservations").await;
+    let page = send(&a, "GET", "/cashier/reservations", Some(&cashier), None, false).await;
+    assert!(page.body.contains("Sari") && page.body.contains("Rp50.000") && page.body.contains("2099-12-24 19:30"));
+    send(
+        &a,
+        "POST",
+        &format!("/reservations/{id}/status"),
+        Some(&cashier),
+        Some("status=arrived"),
+        true,
+    )
+    .await;
+    assert_eq!(db_one::<String>(&a, "SELECT status FROM reservations").await, "arrived");
+    assert_eq!(
+        send(
+            &a,
+            "POST",
+            &format!("/reservations/{id}/status"),
+            Some(&cashier),
+            Some("status=hack"),
+            true
+        )
+        .await
+        .status,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+}
+
+#[tokio::test]
+async fn loyalty_needs_consent_links_paid_orders_and_can_be_erased() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let (oid, cashier, _) = confirmed_order(&a, &owner, 2).await;
+    let token: String = db_one(&a, "SELECT token FROM tables").await;
+    let early = send(
+        &a,
+        "POST",
+        &format!("/m/{token}/orders/{oid}/loyalty"),
+        None,
+        Some("name=Dewi&phone=081234567890&consent=1"),
+        true,
+    )
+    .await;
+    assert_eq!(early.status, StatusCode::NOT_FOUND, "only paid orders can be linked");
+    send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/pay"),
+        Some(&cashier),
+        Some("method=cash&tendered=60000"),
+        true,
+    )
+    .await;
+    let no_consent = send(
+        &a,
+        "POST",
+        &format!("/m/{token}/orders/{oid}/loyalty"),
+        None,
+        Some("name=Dewi&phone=081234567890"),
+        true,
+    )
+    .await;
+    assert_eq!(no_consent.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(db_one::<i64>(&a, "SELECT COUNT(*) FROM customers").await, 0);
+    let bad_phone = send(
+        &a,
+        "POST",
+        &format!("/m/{token}/orders/{oid}/loyalty"),
+        None,
+        Some("name=Dewi&phone=abc&consent=1"),
+        true,
+    )
+    .await;
+    assert_eq!(bad_phone.status, StatusCode::UNPROCESSABLE_ENTITY);
+    let ok = send(
+        &a,
+        "POST",
+        &format!("/m/{token}/orders/{oid}/loyalty"),
+        None,
+        Some("name=Dewi&phone=0812-3456-7890&consent=1"),
+        true,
+    )
+    .await;
+    assert_eq!(ok.status, StatusCode::SEE_OTHER, "{}", ok.body);
+    let list = send(&a, "GET", "/owner/customers", Some(&owner), None, false).await;
+    assert!(
+        list.body.contains("Dewi") && list.body.contains("Rp55.000") && list.body.contains("Latte"),
+        "{}",
+        list.body
+    );
+    assert_eq!(
+        send(&a, "GET", "/owner/customers", Some(&cashier), None, false)
+            .await
+            .status,
+        StatusCode::FORBIDDEN
+    );
+    // Erasure removes the person and the link; the paid order itself is untouched.
+    let cid: String = db_one(&a, "SELECT id FROM customers").await;
+    send(
+        &a,
+        "POST",
+        &format!("/owner/customers/{cid}/erase"),
+        Some(&owner),
+        Some(""),
+        true,
+    )
+    .await;
+    assert_eq!(db_one::<i64>(&a, "SELECT COUNT(*) FROM customers").await, 0);
+    assert_eq!(db_one::<i64>(&a, "SELECT COUNT(*) FROM order_customers").await, 0);
+    assert_eq!(db_one::<String>(&a, "SELECT status FROM orders").await, "paid");
 }

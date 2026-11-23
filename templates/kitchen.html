@@ -2,7 +2,8 @@
 {% block title %}Dapur{% endblock %}
 {% block body %}
 <div class="page-head"><h1>Tiket dapur</h1></div>
+{% if !stations.is_empty() %}<div class="row tabs"><a class="btn" href="/kitchen">Semua</a>{% for s in stations %}<a class="btn" href="/kitchen?station={{ s.0 }}">{{ s.1 }}</a>{% endfor %}</div>{% endif %}
 <div hx-ext="sse" sse-connect="/events">
-  <div id="tickets" hx-get="/kitchen/tickets" hx-trigger="load, sse:orders, every 20s" hx-swap="innerHTML" aria-live="polite"><div class="empty">Memuat…</div></div>
+  <div id="tickets" hx-get="/kitchen/tickets{% if let Some(q) = station_q %}?station={{ q }}{% endif %}" hx-trigger="load, sse:orders, every 20s" hx-swap="innerHTML" aria-live="polite"><div class="empty">Memuat…</div></div>
 </div>
 {% endblock %}

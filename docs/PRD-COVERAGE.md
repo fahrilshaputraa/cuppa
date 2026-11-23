@@ -6,7 +6,7 @@ Honest status of every PRD requirement. ✅ done and tested · 🟡 partial · �
 | ID | Status | Notes |
 | --- | --- | --- |
 | FR-01 | ✅ | Token URL, no login, café name, open/closed banner (opening hours). |
-| FR-02 | 🟡 | Categories, prices, sold-out/low-stock labels, variants. No photos yet. |
+| FR-02 | ✅ | Categories, photos (re-encoded, lazy-loaded), prices, sold-out/low-stock labels, variants. |
 | FR-03 | ✅ | Required/optional modifier groups with max selection; validated and priced on the server. |
 | FR-04 | 🟡 | Live subtotal + note; exact tax/service breakdown is computed and shown after submit. |
 | FR-05 | ✅ | Server re-prices; rejects sold-out/inactive items, inactive table, outside hours, oversell. |
@@ -24,10 +24,10 @@ Honest status of every PRD requirement. ✅ done and tested · 🟡 partial · �
 | FR-17 | ✅ | Cash in/out and open-drawer with reason. |
 | FR-18 | ✅ | Blind close, Z report incl. cash in/out. |
 | FR-19 | ✅ | Order history with search by number/table and date. |
-| FR-20 | 🟡 | Kitchen mode + separate kitchen printer; per-category stations not built. |
+| FR-20 | ✅ | Stations mapped to categories, kitchen screen filter per station, tickets printed to each station's printer. |
 | FR-21 | ✅ | Kitchen screen + ticket printing (kitchen mode). |
 | FR-22 | ✅ | Sold-out toggle for cashier/kitchen. |
-| FR-23 | 🟡 | CRUD, deactivate, CSV import. No photo upload. |
+| FR-23 | ✅ | CRUD, deactivate, CSV import, photo upload, stock, cost. |
 | FR-24 | ✅ | Optional stock per item, auto sold-out at 0, restored on cancel. |
 | FR-25 | ✅ | Tables, printable QR, token rotation. |
 | FR-26 | ✅ | Tax, service, rounding (own line), receipt footer, opening hours. |
@@ -47,7 +47,7 @@ Honest status of every PRD requirement. ✅ done and tested · 🟡 partial · �
 | FR-40 | ✅ | Docker, systemd, nginx sample, install guide. |
 
 ## Additional (FR-41+)
-Built: FR-43 split/mixed payment, FR-45 (expenses + per-item cost → gross/net profit), FR-47 order rating, FR-49 vouchers (scheduled prices not built), FR-52 digital receipt link with WhatsApp share, FR-53 call waiter / ask for bill / table bill (merge-split tables and floor plan not built), FR-55 manual delivery channels (GoFood/GrabFood/ShopeeFood as source), FR-62 customer queue display (staff API/webhooks not built).
+Built: FR-51 owner 2FA (TOTP with replay guard; approvals use the passphrase only, custom roles are covered by per-user permission overrides), FR-57 opt-in loyalty customers with consent, points, favorite item and erasure, FR-61 reservations (deposit is a recorded note, not accounted money), FR-43 split/mixed payment, FR-45 (expenses + per-item cost → gross/net profit), FR-47 order rating, FR-49 vouchers (scheduled prices not built), FR-52 digital receipt link with WhatsApp share, FR-53 call waiter / ask for bill / table bill (merge-split tables and floor plan not built), FR-55 manual delivery channels (GoFood/GrabFood/ShopeeFood as source), FR-62 customer queue display (staff API/webhooks not built).
 
 Still not built:
-payment gateway (41–42), ingredient stock/recipes (44), multi-branch (46, 60, 66), per-menu rating (58), advanced analytics (48), custom CSS/JS (50, 56 — needs a dedicated security review), 2FA/custom roles (51), floor plan/merge tables/translation (53), Postgres + migration tool (36, 54), loyalty/customers (57), platform integrations (59), reservations (61), API/webhooks (62), full offline mode (63), native wrappers (64), accounting (65).
+payment gateway (41–42: needs merchant accounts and a public HTTPS URL to test against), ingredient stock/recipes (44), multi-branch and multi-tenant (46, 60, 66), per-menu rating (58), advanced analytics (48), custom CSS/JS (50, 56 — needs a dedicated security review), floor plan, merge tables and translation (53), Postgres and the migration tool (36, 54), platform integrations (59), API/webhooks (62), full offline mode (63), native wrappers (64), accounting (65). Receipt printing and the cash drawer are implemented but have not been exercised on real hardware.

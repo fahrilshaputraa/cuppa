@@ -1,4 +1,5 @@
 <div class="menu-item {% if i.available == 0 %}soldout{% endif %}">
+  {% if let Some(ph) = i.photo %}<img class="thumb" src="/uploads/{{ ph }}" alt="" width="64" height="64" loading="lazy">{% endif %}
   <div class="mi-main">
     <strong>{{ i.name }}</strong>
     <div class="price">{{ i.price_fmt }}</div>

@@ -67,6 +67,7 @@ pub fn render<T: Template>(t: T) -> Result<Html<String>, AppError> {
 pub struct LoginPage {
     pub ctx: Ctx,
     pub error: Option<String>,
+    pub need_code: bool,
 }
 
 #[derive(Template)]
@@ -109,8 +110,10 @@ pub struct ItemRow {
     pub available: i64,
     pub stock: Option<i64>,
     pub cost: i64,
+    pub photo: Option<String>,
 }
 pub struct ItemView {
+    pub photo: Option<String>,
     pub cost: i64,
     pub stock: Option<i64>,
     pub price: i64,
@@ -262,6 +265,8 @@ pub struct CashierQueue {
 #[template(path = "kitchen.html")]
 pub struct KitchenPage {
     pub ctx: Ctx,
+    pub stations: Vec<(String, String)>,
+    pub station_q: Option<String>,
 }
 
 #[derive(Template)]
@@ -272,6 +277,7 @@ pub struct KitchenTickets {
 
 #[derive(sqlx::FromRow)]
 pub struct MenuRow {
+    pub photo: Option<String>,
     pub id: String,
     pub name: String,
     pub price: i64,
@@ -280,6 +286,7 @@ pub struct MenuRow {
     pub category: String,
 }
 pub struct MenuItemView {
+    pub photo: Option<String>,
     pub groups: Vec<GroupView>,
     pub stock: Option<i64>,
     pub id: String,
@@ -418,6 +425,7 @@ pub struct CustomerStatusPart {
     pub token: String,
     pub id: String,
     pub receipt: Option<String>,
+    pub can_join: bool,
     pub class: &'static str,
     pub label: &'static str,
     pub hint: &'static str,
@@ -567,4 +575,62 @@ pub struct ExpensesPage {
     pub fixed: String,
     pub variable: String,
     pub rows: Vec<(String, String, String, String, String)>,
+}
+
+#[derive(Template)]
+#[template(path = "owner_stations.html")]
+pub struct StationsPage {
+    pub ctx: Ctx,
+    pub error: Option<String>,
+    pub stations: Vec<(String, String, String)>,
+    pub categories: Vec<(String, String, String)>,
+}
+
+pub struct ReservationView {
+    pub id: String,
+    pub name: String,
+    pub phone: String,
+    pub when: String,
+    pub pax: i64,
+    pub deposit: String,
+    pub status: String,
+    pub status_label: &'static str,
+    pub note: String,
+}
+
+#[derive(Template)]
+#[template(path = "reservations.html")]
+pub struct ReservationsPage {
+    pub ctx: Ctx,
+    pub error: Option<String>,
+    pub today: String,
+    pub rows: Vec<ReservationView>,
+}
+
+pub struct CustomerView {
+    pub id: String,
+    pub name: String,
+    pub phone: String,
+    pub visits: i64,
+    pub spend: String,
+    pub points: i64,
+    pub favorite: String,
+}
+
+#[derive(Template)]
+#[template(path = "owner_customers.html")]
+pub struct CustomersPage {
+    pub ctx: Ctx,
+    pub rows: Vec<CustomerView>,
+}
+
+#[derive(Template)]
+#[template(path = "owner_security.html")]
+pub struct SecurityPage {
+    pub ctx: Ctx,
+    pub error: Option<String>,
+    pub notice: Option<String>,
+    pub enabled: bool,
+    pub setup_qr: String,
+    pub setup_key: String,
 }

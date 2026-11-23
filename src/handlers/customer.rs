@@ -192,7 +192,13 @@ pub async fn status_part(State(st): State<AppState>, Path((token, id)): Path<(St
     } else {
         None
     };
+    let can_join: bool = paid
+        && !sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM order_customers WHERE order_id = ?)")
+            .bind(&id)
+            .fetch_one(&st.db)
+            .await?;
     let html = render(CustomerStatusPart {
+        can_join,
         can_rate: paid && rated.is_none(),
         rated,
         token,

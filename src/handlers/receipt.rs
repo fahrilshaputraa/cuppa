@@ -140,32 +140,34 @@ pub fn print_ticket(st: AppState, id: String) {
         if s.kitchen_mode != 1 {
             return;
         }
-        let Some(addr) = s
-            .kitchen_printer_host
-            .as_deref()
-            .and_then(|p| escpos::parse_printer(p).ok())
-        else {
-            return;
-        };
         let row: Option<(i64, i64, Option<String>, Option<String>)> =
             sqlx::query_as("SELECT o.number, o.created_at, t.label, o.note FROM orders o LEFT JOIN tables t ON t.id = o.table_id WHERE o.id = ?").bind(&id).fetch_optional(&mut *c).await.ok().flatten();
         let Some((number, at, label, note)) = row else { return };
-        let lines: Vec<(i64, String)> =
-            sqlx::query_as("SELECT qty, name FROM order_items WHERE order_id = ? AND voided = 0")
-                .bind(&id)
-                .fetch_all(&mut *c)
-                .await
-                .unwrap_or_default();
-        let lines: Vec<String> = lines.into_iter().map(|(q, n)| format!("{q}x {n}")).collect();
-        let data = escpos::ticket_bytes(
-            number,
-            &label.map(|l| format!("Meja {l}")).unwrap_or_else(|| "Antre".into()),
-            &clock::hm(at, st.cfg.tz_offset_hours),
-            &lines,
-            note.as_deref(),
-        );
-        if let Err(e) = escpos::send(addr, &data).await {
-            tracing::warn!(error = ?e, "kitchen ticket print failed");
+        // Each line goes to its station's printer; unmapped categories use the main kitchen printer.
+        let lines: Vec<(i64, String, Option<String>)> = sqlx::query_as(
+            "SELECT i.qty, i.name, s.printer_host FROM order_items i JOIN menu_items m ON m.id = i.menu_id JOIN categories c ON c.id = m.category_id \
+             LEFT JOIN stations s ON s.id = c.station_id WHERE i.order_id = ? AND i.voided = 0",
+        )
+        .bind(&id)
+        .fetch_all(&mut *c)
+        .await
+        .unwrap_or_default();
+        let mut by_printer: std::collections::BTreeMap<String, Vec<String>> = std::collections::BTreeMap::new();
+        for (q, n, host) in lines {
+            if let Some(h) = host.or_else(|| s.kitchen_printer_host.clone()) {
+                by_printer.entry(h).or_default().push(format!("{q}x {n}"));
+            }
+        }
+        let where_label = label.map(|l| format!("Meja {l}")).unwrap_or_else(|| "Antre".into());
+        let when = clock::hm(at, st.cfg.tz_offset_hours);
+        for (host, lines) in by_printer {
+            let Ok(addr) = escpos::parse_printer(&host) else {
+                continue;
+            };
+            let data = escpos::ticket_bytes(number, &where_label, &when, &lines, note.as_deref());
+            if let Err(e) = escpos::send(addr, &data).await {
+                tracing::warn!(error = ?e, "kitchen ticket print failed");
+            }
         }
     });
 }

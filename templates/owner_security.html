@@ -1,0 +1,23 @@
+{% extends "app.html" %}
+{% block title %}Keamanan akun{% endblock %}
+{% block body %}
+<div class="page-head"><h1>Keamanan akun</h1></div>
+{% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
+{% if let Some(n) = notice %}<div class="notice" role="status">{{ n }}</div>{% endif %}
+<div class="panel">
+  <h3>Verifikasi dua langkah (2FA)</h3>
+  {% if enabled %}
+    <p><span class="chip ok">Aktif</span></p>
+    <p class="muted">Setiap masuk sebagai owner meminta kode 6 digit dari aplikasi autentikator. Void, refund, dan diskon besar tetap memakai kata sandi owner.</p>
+    <form method="post" action="/owner/security/disable" class="row">
+      <input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" required placeholder="Kode 6 digit" aria-label="Kode 6 digit">
+      <button class="btn danger" type="submit">Matikan 2FA</button></form>
+  {% else %}
+    <p class="muted">Pindai kode QR dengan aplikasi autentikator (Google Authenticator, Aegis, 1Password), lalu masukkan kode 6 digit untuk mengaktifkan.</p>
+    <div class="qr-sheet"><div class="qr">{{ setup_qr|safe }}</div><p class="muted small">Atau masukkan kunci manual: <code>{{ setup_key }}</code></p></div>
+    <form method="post" action="/owner/security/enable" class="row">
+      <input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" required placeholder="Kode 6 digit" aria-label="Kode 6 digit">
+      <button class="btn primary" type="submit">Aktifkan</button></form>
+  {% endif %}
+</div>
+{% endblock %}

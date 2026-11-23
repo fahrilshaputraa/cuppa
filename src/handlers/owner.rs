@@ -170,11 +170,12 @@ async fn menu_page(st: &AppState, staff: &Staff, error: Option<String>) -> AppRe
             .fetch_all(&st.db)
             .await?;
     let rows: Vec<ItemRow> = sqlx::query_as(
-        "SELECT m.id, m.name, c.name AS category, m.price, m.active, m.available, m.stock, m.cost FROM menu_items m JOIN categories c ON c.id = m.category_id ORDER BY c.name, m.name",
+        "SELECT m.id, m.name, c.name AS category, m.price, m.active, m.available, m.stock, m.cost, m.photo FROM menu_items m JOIN categories c ON c.id = m.category_id ORDER BY c.name, m.name",
     ).fetch_all(&st.db).await?;
     let items = rows
         .into_iter()
         .map(|r| ItemView {
+            photo: r.photo,
             stock: r.stock,
             cost: r.cost,
             price: r.price,

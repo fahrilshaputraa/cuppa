@@ -182,17 +182,34 @@ struct UserRow {
     pin_hash: String,
     failed_attempts: i64,
     locked_until: i64,
+    totp_secret: Option<String>,
+    totp_last: i64,
 }
 
 pub enum CredError {
     Invalid,
     Locked,
+    /// Password was right but the account has 2FA and no code was supplied.
+    NeedCode,
+}
+
+/// How to treat a second factor. Approvals (void/refund/discount) skip it: they only confirm an identity
+/// for one action and never create a session.
+#[derive(Clone, Copy)]
+pub enum Second<'a> {
+    Skip,
+    Code(Option<&'a str>),
 }
 
 /// Verify name + secret with lockout. Returns the authenticated staff member.
-pub async fn check_credentials(pool: &SqlitePool, name: &str, secret: &str) -> Result<Staff, CredError> {
+pub async fn check_credentials(
+    pool: &SqlitePool,
+    name: &str,
+    secret: &str,
+    second: Second<'_>,
+) -> Result<Staff, CredError> {
     let row: Option<UserRow> = sqlx::query_as(
-        "SELECT id, name, role, pin_hash, failed_attempts, locked_until FROM users WHERE name = ? COLLATE NOCASE AND active = 1",
+        "SELECT id, name, role, pin_hash, failed_attempts, locked_until, totp_secret, totp_last FROM users WHERE name = ? COLLATE NOCASE AND active = 1",
     )
     .bind(name.trim())
     .fetch_optional(pool)
@@ -206,19 +223,39 @@ pub async fn check_credentials(pool: &SqlitePool, name: &str, secret: &str) -> R
     if u.locked_until > now {
         return Err(CredError::Locked);
     }
-    if verify_secret(secret.to_string(), u.pin_hash.clone()).await {
-        let _ = sqlx::query("UPDATE users SET failed_attempts = 0, locked_until = 0 WHERE id = ?")
-            .bind(&u.id)
-            .execute(pool)
-            .await;
-        let role = Role::parse(&u.role).ok_or(CredError::Invalid)?;
-        return Ok(Staff {
-            id: u.id,
-            name: u.name,
-            role,
-            perms: Vec::new(),
-        });
+    if !verify_secret(secret.to_string(), u.pin_hash.clone()).await {
+        return Err(register_failure(pool, &u, now).await);
     }
+    // Second factor (owner 2FA). Wrong codes count as failed attempts exactly like wrong passwords.
+    if let (Some(totp), Second::Code(code)) = (u.totp_secret.as_deref(), second) {
+        let Some(code) = code.filter(|c| !c.trim().is_empty()) else {
+            return Err(CredError::NeedCode);
+        };
+        match crate::totp::verify(totp, code, now, u.totp_last) {
+            Some(step) => {
+                let _ = sqlx::query("UPDATE users SET totp_last = ? WHERE id = ?")
+                    .bind(step)
+                    .bind(&u.id)
+                    .execute(pool)
+                    .await;
+            }
+            None => return Err(register_failure(pool, &u, now).await),
+        }
+    }
+    let _ = sqlx::query("UPDATE users SET failed_attempts = 0, locked_until = 0 WHERE id = ?")
+        .bind(&u.id)
+        .execute(pool)
+        .await;
+    let role = Role::parse(&u.role).ok_or(CredError::Invalid)?;
+    Ok(Staff {
+        id: u.id,
+        name: u.name,
+        role,
+        perms: Vec::new(),
+    })
+}
+
+async fn register_failure(pool: &SqlitePool, u: &UserRow, now: i64) -> CredError {
     let fails = u.failed_attempts + 1;
     let (fails, lock) = if fails >= MAX_FAILS {
         (0, now + LOCK_SECS)
@@ -232,18 +269,16 @@ pub async fn check_credentials(pool: &SqlitePool, name: &str, secret: &str) -> R
         .execute(pool)
         .await;
     if lock > 0 {
-        let mut c = match pool.acquire().await {
-            Ok(c) => c,
-            Err(_) => return Err(CredError::Locked),
-        };
-        let _ = crate::audit::record(
-            &mut c,
-            crate::audit::Entry::new(Some(&u.id), "auth.locked", "user", Some(&u.id)),
-        )
-        .await;
-        return Err(CredError::Locked);
+        if let Ok(mut c) = pool.acquire().await {
+            let _ = crate::audit::record(
+                &mut c,
+                crate::audit::Entry::new(Some(&u.id), "auth.locked", "user", Some(&u.id)),
+            )
+            .await;
+        }
+        return CredError::Locked;
     }
-    Err(CredError::Invalid)
+    CredError::Invalid
 }
 
 pub async fn create_session(pool: &SqlitePool, user_id: &str) -> anyhow::Result<String> {

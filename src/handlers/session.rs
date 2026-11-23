@@ -33,12 +33,25 @@ pub async fn root(State(st): State<AppState>, staff: Result<Staff, AppError>) ->
     })
 }
 
+async fn login_code(st: &AppState) -> AppResult<Response> {
+    Ok((
+        axum::http::StatusCode::UNAUTHORIZED,
+        render(LoginPage {
+            ctx: Ctx::guest(st).await?,
+            error: Some("Masukkan kode 6 digit dari aplikasi autentikator.".into()),
+            need_code: true,
+        })?,
+    )
+        .into_response())
+}
+
 async fn login_error(st: &AppState, msg: &str) -> AppResult<Response> {
     Ok((
         axum::http::StatusCode::UNAUTHORIZED,
         render(LoginPage {
             ctx: Ctx::guest(st).await?,
             error: Some(msg.into()),
+            need_code: false,
         })?,
     )
         .into_response())
@@ -62,6 +75,7 @@ pub async fn login_page(State(st): State<AppState>) -> AppResult<Response> {
     Ok(render(LoginPage {
         ctx: Ctx::guest(&st).await?,
         error: None,
+        need_code: false,
     })?
     .into_response())
 }
@@ -70,6 +84,7 @@ pub async fn login_page(State(st): State<AppState>) -> AppResult<Response> {
 pub struct LoginForm {
     name: String,
     secret: String,
+    code: Option<String>,
 }
 
 pub async fn login(
@@ -82,7 +97,7 @@ pub async fn login(
     if !st.limiter.allow(&format!("login:{ip}"), 10, Duration::from_secs(60)) {
         return Err(AppError::TooMany);
     }
-    match auth::check_credentials(&st.db, &f.name, &f.secret).await {
+    match auth::check_credentials(&st.db, &f.name, &f.secret, auth::Second::Code(f.code.as_deref())).await {
         Ok(staff) => {
             if staff.role != Role::Owner {
                 let required: i64 = sqlx::query_scalar("SELECT require_device FROM outlet_settings WHERE id = 1")
@@ -106,7 +121,8 @@ pub async fn login(
                 .into_response())
         }
         Err(CredError::Locked) => login_error(&st, "Akun dikunci sementara. Coba lagi dalam beberapa menit.").await,
-        Err(CredError::Invalid) => login_error(&st, "Nama atau PIN salah.").await,
+        Err(CredError::NeedCode) => login_code(&st).await,
+        Err(CredError::Invalid) => login_error(&st, "Nama, PIN, atau kode salah.").await,
     }
 }
 

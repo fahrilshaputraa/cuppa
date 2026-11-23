@@ -14,6 +14,7 @@ pub mod handlers;
 pub mod money;
 pub mod rand_id;
 pub mod security;
+pub mod totp;
 pub mod views;
 
 use axum::{
@@ -24,7 +25,7 @@ use axum::{
     routing::{get, post},
 };
 use futures_util::Stream;
-use handlers::{admin, cashier, customer, extras, orders, owner, public, receipt, reports, session};
+use handlers::{admin, cashier, customer, extras, more, orders, owner, public, receipt, reports, session};
 use sqlx::SqlitePool;
 use std::{
     convert::Infallible,
@@ -84,6 +85,8 @@ pub fn router(st: AppState) -> Router {
         .route("/m/{token}/call", post(public::call))
         .route("/r/{token}", get(receipt::public))
         .route("/display", get(public::display))
+        .route("/uploads/{name}", get(more::serve_upload))
+        .route("/m/{token}/orders/{id}/loyalty", post(more::loyalty_join))
         .route("/display/part", get(public::display_part))
         .layer(middleware::from_fn_with_state(st.clone(), security::throttle_public));
 
@@ -124,6 +127,22 @@ pub fn router(st: AppState) -> Router {
         .route("/orders/{id}/items/{item}/void", post(orders::void_item))
         .route("/orders/{id}/move", post(orders::move_table))
         .route("/orders/{id}/refund", post(orders::refund))
+        .route(
+            "/owner/items/{id}/photo",
+            post(more::photo_upload).layer(DefaultBodyLimit::max(4 * 1024 * 1024)),
+        )
+        .route("/owner/stations", get(more::stations_get).post(more::stations_add))
+        .route("/owner/categories/{id}/station", post(more::category_station))
+        .route(
+            "/cashier/reservations",
+            get(more::reservations_get).post(more::reservations_add),
+        )
+        .route("/reservations/{id}/status", post(more::reservation_status))
+        .route("/owner/customers", get(more::customers_get))
+        .route("/owner/customers/{id}/erase", post(more::customer_erase))
+        .route("/owner/security", get(more::security_get))
+        .route("/owner/security/enable", post(more::security_enable))
+        .route("/owner/security/disable", post(more::security_disable))
         .route("/owner/vouchers", get(admin::vouchers_get).post(admin::vouchers_add))
         .route("/owner/vouchers/{id}/active", post(admin::vouchers_toggle))
         .route("/owner/expenses", get(admin::expenses_get).post(admin::expenses_add))
@@ -140,7 +159,7 @@ pub fn router(st: AppState) -> Router {
         .route("/cashier/shift/open", post(cashier::shift_open))
         .route("/cashier/shift/close", post(cashier::shift_close))
         .route("/kitchen", get(cashier::kitchen_page))
-        .route("/kitchen/tickets", get(cashier::kitchen_tickets))
+        .route("/kitchen/tickets", get(more::kitchen_tickets))
         .route("/orders/{id}", get(orders::detail))
         .route("/orders/{id}/confirm", post(orders::confirm))
         .route("/orders/{id}/reject", post(orders::reject))

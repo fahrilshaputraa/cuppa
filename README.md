@@ -20,7 +20,7 @@ Small cafés lose money in three places: cash leakage (fake voids and discounts,
 - **Cashier** — live queue with new-order sound, confirm/reject, manual orders, item void, table move, discounts (owner approval above the cashier limit), cash/QRIS/card/transfer, quick-cash chips with live change, history & search, cash in/out, blind shift close with Z report.
 - **Refunds & voids** — partial/full refund documents and post-payment void, always with a reason and owner approval, fully audited.
 - **Receipts** — browser print or ESC/POS LAN printer, cash-drawer pulse, kitchen/bar ticket printing, test-print button.
-- **Owner** — menu (variants, stock, CSV import), tables + printable QR, staff with per-user permission overrides, registered devices, tax/service/rounding/hours/theme, reports (+CSV), audit log.
+- **Owner** — menu (photos, variants, stock, cost, CSV import), kitchen/bar stations, reservations, opt-in loyalty customers, 2FA, tables + printable QR, staff with per-user permission overrides, registered devices, tax/service/rounding/hours/theme, reports (+CSV), audit log.
 - **Data safety** — daily rotating backups, one-click download, `cuppa verify-backup`, automatic snapshot before migrations, restore script.
 - **Money rules** — integer rupiah, price copied into order lines, rounding recorded as its own line, paid orders locked by the database.
 - **Realtime** — Server-Sent Events + HTMX, no JS framework.
@@ -31,7 +31,8 @@ Full requirement-by-requirement status: [docs/PRD-COVERAGE.md](docs/PRD-COVERAGE
 
 | Area | Measure |
 | --- | --- |
-| Secrets | Argon2id; lockout after 5 failures; constant-time-ish unknown-user path |
+| Secrets | Argon2id; lockout after 5 failures; same Argon2 work for unknown users; optional owner 2FA (TOTP, replay-protected) |
+| Uploads | Images decoded with size limits and re-encoded to JPEG; server-chosen random names; never served as-is |
 | Sessions | Random 256-bit token, only its SHA-256 stored; `HttpOnly; SameSite=Strict` (+`Secure` over HTTPS); 12 h max, 10 min idle lock |
 | Devices | Cashier/kitchen PINs work only on devices the owner registered (revocable) |
 | First run | No default credentials. A one-time setup code is printed to the server log |
