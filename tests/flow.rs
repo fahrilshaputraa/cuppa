@@ -2434,3 +2434,85 @@ async fn loyalty_needs_consent_links_paid_orders_and_can_be_erased() {
     assert_eq!(db_one::<i64>(&a, "SELECT COUNT(*) FROM order_customers").await, 0);
     assert_eq!(db_one::<String>(&a, "SELECT status FROM orders").await, "paid");
 }
+
+#[tokio::test]
+async fn analytics_tax_and_journal_exports() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let (token, item, cashier) = seed(&a, &owner).await;
+    send(
+        &a,
+        "POST",
+        &format!("/owner/items/{item}"),
+        Some(&owner),
+        Some("name=Latte&price=25000&cost=10000"),
+        true,
+    )
+    .await;
+    send(
+        &a,
+        "POST",
+        "/cashier/shift/open",
+        Some(&cashier),
+        Some("opening=0"),
+        true,
+    )
+    .await;
+    send(
+        &a,
+        "POST",
+        &format!("/m/{token}/orders"),
+        None,
+        Some(&format!("qty_{item}=2")),
+        true,
+    )
+    .await;
+    let oid: String = db_one(&a, "SELECT id FROM orders").await;
+    send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/confirm"),
+        Some(&cashier),
+        Some(""),
+        true,
+    )
+    .await;
+    send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/pay"),
+        Some(&cashier),
+        Some("method=cash&tendered=55000"),
+        true,
+    )
+    .await;
+    let rep = send(&a, "GET", "/owner/reports", Some(&owner), None, false).await;
+    assert!(
+        rep.body.contains("Jam tersibuk") && rep.body.contains("Margin per menu") && rep.body.contains("60%"),
+        "{}",
+        rep.body
+    );
+    let tax = send(&a, "GET", "/owner/reports/tax.csv", Some(&owner), None, false).await;
+    assert!(
+        tax.body.starts_with("tanggal,")
+            && tax.body.contains(",1,50000,0,0,5000,0,55000")
+            && tax.body.contains("TOTAL,1,50000"),
+        "{}",
+        tax.body
+    );
+    let j = send(&a, "GET", "/owner/reports/journal.csv", Some(&owner), None, false).await;
+    // Journal balances: debit 55.000 (cash) = credit 50.000 (sales) + 5.000 (tax).
+    let (mut dr, mut cr) = (0i64, 0i64);
+    for l in j.body.lines().skip(1) {
+        let c: Vec<&str> = l.split(',').collect();
+        dr += c[3].parse::<i64>().unwrap();
+        cr += c[4].parse::<i64>().unwrap();
+    }
+    assert_eq!((dr, cr), (55_000, 55_000), "{}", j.body);
+    for p in ["/owner/reports/tax.csv", "/owner/reports/journal.csv"] {
+        assert_eq!(
+            send(&a, "GET", p, Some(&cashier), None, false).await.status,
+            StatusCode::FORBIDDEN
+        );
+    }
+}

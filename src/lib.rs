@@ -148,6 +148,8 @@ pub fn router(st: AppState) -> Router {
         .route("/owner/expenses", get(admin::expenses_get).post(admin::expenses_add))
         .route("/owner/reports", get(reports::page))
         .route("/owner/reports.csv", get(reports::csv))
+        .route("/owner/reports/tax.csv", get(reports::tax_csv))
+        .route("/owner/reports/journal.csv", get(reports::journal_csv))
         .route("/owner/backup", post(owner::backup_download))
         .route("/owner/printer/test", post(owner::printer_test))
         .route("/orders/{id}/receipt", get(receipt::page))

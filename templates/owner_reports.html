@@ -6,7 +6,9 @@
   <div class="field"><label for="from">Dari</label><input id="from" type="date" name="from" value="{{ from }}"></div>
   <div class="field"><label for="to">Sampai</label><input id="to" type="date" name="to" value="{{ to }}"></div>
   <button class="btn primary" type="submit">Tampilkan</button>
-  <a class="btn" href="/owner/reports.csv?from={{ from }}&amp;to={{ to }}">Unduh CSV</a>
+  <a class="btn" href="/owner/reports.csv?from={{ from }}&amp;to={{ to }}">Penjualan (CSV)</a>
+  <a class="btn" href="/owner/reports/tax.csv?from={{ from }}&amp;to={{ to }}">Laporan pajak (CSV)</a>
+  <a class="btn" href="/owner/reports/journal.csv?from={{ from }}&amp;to={{ to }}">Jurnal (CSV)</a>
 </form>
 <div class="stat-row">
   <div class="panel stat"><div class="label">Penjualan</div><div class="value">{{ sales }}</div></div>
@@ -38,4 +40,11 @@
 <div class="panel"><h3>Selisih kas per shift (10 terakhir)</h3>
   {% if shifts.is_empty() %}<div class="empty"><strong>Belum ada shift yang ditutup</strong></div>{% else %}
   <table class="ledger"><thead><tr><th>Dibuka</th><th>Kasir</th><th class="num">Selisih</th></tr></thead><tbody>{% for s in shifts %}<tr><td>{{ s.0 }}</td><td>{{ s.1 }}</td><td class="num"><span class="chip {{ s.3 }}">{{ s.2 }}</span></td></tr>{% endfor %}</tbody></table>{% endif %}</div>
+<div class="grid cols-2">
+  <div class="panel"><h3>Jam tersibuk</h3>
+    <table class="ledger"><tbody>{% for h in hours %}<tr><td class="muted">{{ h.0 }}:00</td><td class="num">{{ h.1 }}</td><td><progress max="{{ max_hour }}" value="{{ h.1 }}"></progress></td></tr>{% endfor %}</tbody></table></div>
+  <div class="panel"><h3>Margin per menu</h3>
+    {% if margins.is_empty() %}<div class="empty"><strong>Belum ada data margin</strong>Isi HPP per menu di Menu → Ubah</div>{% else %}
+    <table class="ledger"><thead><tr><th>Menu</th><th class="num">Omzet</th><th class="num">Laba kotor</th><th class="num">Margin</th></tr></thead><tbody>{% for m in margins %}<tr><td>{{ m.0 }}</td><td class="num">{{ m.3 }}</td><td class="num">{{ m.1 }}</td><td class="num">{{ m.2 }}</td></tr>{% endfor %}</tbody></table>{% endif %}</div>
+</div>
 {% endblock %}
