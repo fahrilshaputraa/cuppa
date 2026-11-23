@@ -108,3 +108,8 @@ document.body.addEventListener("htmx:afterSwap", (e) => {
   if (lastPending !== null && n > lastPending) beep();
   lastPending = n;
 });
+
+// PWA: register the service worker (installable on Android/PC; caches public assets only).
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => { /* not available over plain http on non-localhost */ });
+}

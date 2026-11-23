@@ -1,0 +1,25 @@
+{% extends "app.html" %}
+{% block title %}Integrasi{% endblock %}
+{% block body %}
+<div class="page-head"><h1>Integrasi</h1></div>
+{% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
+{% if let Some(n) = notice %}<div class="notice" role="status">{{ n }}</div>{% endif %}
+{% if let Some(sec) = new_secret %}<div class="notice" role="status"><strong>Rahasia penandatangan webhook. Simpan sekarang, tidak ditampilkan lagi:</strong><br><code>{{ sec }}</code></div>{% endif %}
+<form class="panel" method="post" action="/owner/integrations">
+  <h3>Payment gateway (QRIS otomatis)</h3>
+  <p class="muted">Cuppa tidak memegang uang: QRIS mengarah ke akun merchant kafe Anda. Kunci server disimpan terenkripsi, tidak pernah ditampilkan lagi.</p>
+  <div class="field"><label for="gp">Penyedia</label><select id="gp" name="provider"><option value="" {% if provider.is_empty() %}selected{% endif %}>Mati (QRIS dicatat manual)</option><option value="midtrans" {% if provider == "midtrans" %}selected{% endif %}>Midtrans</option></select></div>
+  <div class="field"><label for="gk">Kunci server {% if key_set %}<span class="chip ok">tersimpan</span>{% endif %}</label><input id="gk" name="server_key" type="password" autocomplete="off" placeholder="{% if key_set %}Kosongkan untuk tetap memakai yang lama{% else %}Mid-server-…{% endif %}"></div>
+  <p class="muted small">Di dasbor Midtrans, isi <em>Payment Notification URL</em> dengan: <code>{{ webhook_in }}</code>. Webhook ini wajib HTTPS publik dan diverifikasi tanda tangannya.</p>
+  <h3>Webhook keluar</h3>
+  <p class="muted">Kirim kejadian <code>order.paid</code> ke sistem Anda (JSON, header <code>X-Cuppa-Signature: sha256=…</code> HMAC dari isi pesan).</p>
+  <div class="field"><label for="wu">URL (https)</label><input id="wu" name="webhook_url" value="{{ webhook_url }}" maxlength="300" placeholder="https://contoh.com/hook"></div>
+  {% if has_secret %}<div class="field"><label><input type="checkbox" name="rotate_secret" value="1"> Buat rahasia penandatangan baru</label></div>{% endif %}
+  <button class="btn primary" type="submit">Simpan</button>
+</form>
+<div class="panel"><h3>Transaksi gateway terakhir</h3>
+{% if charges.is_empty() %}<div class="empty"><strong>Belum ada transaksi</strong></div>{% else %}
+<table class="ledger"><thead><tr><th>Pesanan</th><th>ID</th><th class="num">Nominal</th><th>Status</th><th>Waktu</th></tr></thead><tbody>
+{% for c in charges %}<tr><td>{{ c.0 }}</td><td class="muted"><code>{{ c.1 }}</code></td><td class="num">{{ c.2 }}</td><td>{% if c.3 == "settled" %}<span class="chip ok">Lunas</span>{% else if c.3 == "pending" %}<span class="chip warn">Menunggu</span>{% else if c.3 == "unapplied" %}<span class="chip danger">Perlu dicek</span>{% else %}<span class="chip neutral">{{ c.3 }}</span>{% endif %}</td><td class="muted">{{ c.4 }}</td></tr>{% endfor %}
+</tbody></table>{% endif %}</div>
+{% endblock %}

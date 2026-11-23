@@ -3,6 +3,7 @@ pub mod admin;
 pub mod cashier;
 pub mod customer;
 pub mod extras;
+pub mod gateway;
 pub mod inventory;
 pub mod more;
 pub mod ops;

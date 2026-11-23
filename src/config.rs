@@ -14,6 +14,8 @@ pub struct Config {
     pub trust_proxy: bool,
     /// Outlet UTC offset in hours (Asia/Jakarta = 7).
     pub tz_offset_hours: i8,
+    /// Midtrans API base (sandbox: https://api.sandbox.midtrans.com).
+    pub midtrans_base: String,
 }
 
 impl Config {
@@ -33,6 +35,7 @@ impl Config {
             public_url,
             trust_proxy: flag("CUPPA_TRUST_PROXY", false),
             tz_offset_hours: get("CUPPA_TZ_OFFSET_HOURS", "7").parse()?,
+            midtrans_base: get("CUPPA_MIDTRANS_BASE", "https://api.midtrans.com"),
         })
     }
 
@@ -49,6 +52,7 @@ impl Config {
             cookie_secure: false,
             trust_proxy: false,
             tz_offset_hours: 7,
+            midtrans_base: "http://127.0.0.1:1".into(),
         }
     }
 }

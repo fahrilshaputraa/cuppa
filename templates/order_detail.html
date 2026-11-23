@@ -58,7 +58,16 @@
         <div id="change-out" class="change" aria-live="polite"></div></div>
       <div class="field" data-for="noncash" hidden><label for="r">Nomor referensi (approval / ID transaksi)</label><input id="r" name="reference" maxlength="60" autocomplete="off"></div>
       <button class="btn primary" type="submit">Terima pembayaran</button>
-    </form>{% endif %}
+    </form>
+    {% if gateway_on %}
+    <hr class="sep">
+    <h3>QRIS otomatis</h3>
+    {% for c in charges %}<div class="charge"><div class="row between"><strong>{{ c.amount }}</strong>{% if c.status == "settled" %}<span class="chip ok">Lunas</span>{% else if c.status == "pending" %}<span class="chip warn">Menunggu pembayaran</span>{% else %}<span class="chip neutral">{{ c.status }}</span>{% endif %}</div>
+      {% if c.status == "pending" %}<div class="qr">{{ c.qr_svg|safe }}</div>
+      <form method="post" action="/gateway/charges/{{ c.id }}/check"><button class="btn" type="submit">Cek status</button></form>{% endif %}</div>{% endfor %}
+    <form method="post" action="/orders/{{ o.id }}/gateway/qris"><button class="btn" type="submit">Buat QRIS untuk sisa {{ remaining_fmt }}</button></form>
+    {% endif %}
+    {% endif %}
   {% else if o.status == "pending" %}
     <p class="muted">Menunggu konfirmasi kasir. <a href="/cashier">Kembali ke antrean</a></p>
   {% else if o.status == "paid" %}

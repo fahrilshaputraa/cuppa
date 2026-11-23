@@ -667,3 +667,115 @@ pub async fn security_disable(
     tx.commit().await?;
     security_page(&st, &staff, None, Some("Verifikasi dua langkah dimatikan.".into())).await
 }
+
+// ---- Scheduled prices (FR-49) ------------------------------------------------------------------
+
+async fn prices_page(st: &AppState, staff: &Staff, menu_id: &str, error: Option<String>) -> AppResult<Response> {
+    let (name, price): (String, i64) = sqlx::query_as("SELECT name, price FROM menu_items WHERE id = ?")
+        .bind(menu_id)
+        .fetch_optional(&st.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    let rules: Vec<(String, i64, String, String, Option<String>, i64)> = sqlx::query_as(
+        "SELECT id, price, from_hm, to_hm, label, active FROM price_rules WHERE menu_id = ? ORDER BY from_hm",
+    )
+    .bind(menu_id)
+    .fetch_all(&st.db)
+    .await?;
+    Ok(render(PricesPage {
+        ctx: Ctx::staff(st, staff, "menu").await?,
+        error,
+        menu_id: menu_id.into(),
+        menu_name: name,
+        list_price: rupiah(price),
+        rules: rules
+            .into_iter()
+            .map(|(id, p, f, t, l, a)| (id, rupiah(p), format!("{f}–{t}"), l.unwrap_or_default(), a == 1))
+            .collect(),
+    })?
+    .into_response())
+}
+
+pub async fn prices_get(State(st): State<AppState>, staff: Staff, Path(id): Path<String>) -> AppResult<Response> {
+    owner(&staff)?;
+    prices_page(&st, &staff, &id, None).await
+}
+
+#[derive(Deserialize)]
+pub struct PriceRuleNew {
+    price: i64,
+    from_hm: String,
+    to_hm: String,
+    label: Option<String>,
+}
+
+fn hm_valid(x: &str) -> bool {
+    x.len() == 5
+        && x.as_bytes()[2] == b':'
+        && x[..2].parse::<u8>().is_ok_and(|h| h < 24)
+        && x[3..].parse::<u8>().is_ok_and(|m| m < 60)
+}
+
+pub async fn prices_add(
+    State(st): State<AppState>,
+    staff: Staff,
+    Path(id): Path<String>,
+    Form(f): Form<PriceRuleNew>,
+) -> AppResult<Response> {
+    owner(&staff)?;
+    if !(0..=100_000_000).contains(&f.price) || !hm_valid(&f.from_hm) || !hm_valid(&f.to_hm) || f.from_hm == f.to_hm {
+        return prices_page(
+            &st,
+            &staff,
+            &id,
+            Some("Harga dan jam (HH:MM, awal berbeda dari akhir) wajib diisi dengan benar.".into()),
+        )
+        .await;
+    }
+    let mut tx = crate::db::begin_write(&st.db).await?;
+    let ok: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM menu_items WHERE id = ?)")
+        .bind(&id)
+        .fetch_one(&mut *tx)
+        .await?;
+    if !ok {
+        return Err(AppError::NotFound);
+    }
+    let rid = rand_id::id();
+    sqlx::query("INSERT INTO price_rules (id, menu_id, price, from_hm, to_hm, label) VALUES (?,?,?,?,?,?)")
+        .bind(&rid)
+        .bind(&id)
+        .bind(f.price)
+        .bind(&f.from_hm)
+        .bind(&f.to_hm)
+        .bind(f.label.as_deref().map(|l| clean(l, 30)).filter(|l| !l.is_empty()))
+        .execute(&mut *tx)
+        .await?;
+    audit::record(
+        &mut tx,
+        Entry::new(Some(&staff.id), "price_rule.created", "menu_item", Some(&id)),
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(Redirect::to(&format!("/owner/items/{id}/prices")).into_response())
+}
+
+pub async fn prices_toggle(State(st): State<AppState>, staff: Staff, Path(rid): Path<String>) -> AppResult<Redirect> {
+    owner(&staff)?;
+    let menu_id: String = sqlx::query_scalar("SELECT menu_id FROM price_rules WHERE id = ?")
+        .bind(&rid)
+        .fetch_optional(&st.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    let mut tx = crate::db::begin_write(&st.db).await?;
+    sqlx::query("UPDATE price_rules SET active = 1 - active WHERE id = ?")
+        .bind(&rid)
+        .execute(&mut *tx)
+        .await?;
+    audit::record(
+        &mut tx,
+        Entry::new(Some(&staff.id), "price_rule.toggled", "menu_item", Some(&menu_id)),
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(Redirect::to(&format!("/owner/items/{menu_id}/prices")))
+}

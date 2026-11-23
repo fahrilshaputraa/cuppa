@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="htmx-config" content='{"allowEval":false,"includeIndicatorStyles":false,"selfRequestsOnly":true}'>
 <title>{% block title %}Cuppa{% endblock %} · {{ ctx.outlet }}</title>
+<link rel="manifest" href="/static/manifest.webmanifest">
+<meta name="theme-color" content="#a8481f">
+<link rel="icon" href="/static/icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="/static/icons/icon-192.png">
 <link rel="stylesheet" href="/static/css/app.css">
 <script src="/static/vendor/htmx.min.js" defer></script>
 <script src="/static/vendor/htmx-sse.js" defer></script>

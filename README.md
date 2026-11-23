@@ -21,6 +21,7 @@ Small cafés lose money in three places: cash leakage (fake voids and discounts,
 - **Refunds & voids** — partial/full refund documents and post-payment void, always with a reason and owner approval, fully audited.
 - **Receipts** — browser print or ESC/POS LAN printer, cash-drawer pulse, kitchen/bar ticket printing, test-print button.
 - **Owner** — menu (photos, variants, stock, cost, CSV import), kitchen/bar stations, reservations, opt-in loyalty customers, 2FA, tables + printable QR, staff with per-user permission overrides, registered devices, tax/service/rounding/hours/theme, reports (+CSV), audit log.
+- **Payments** — QRIS gateway (Midtrans) with signed webhooks, split/mixed payments, voucher and happy-hour prices.
 - **Back-office** — ingredients, recipes and stock movements with actual cost, expenses, profit, ledger and journal exports, read-only API keys, floor plan, order merge.
 - **Data safety** — daily rotating backups, one-click download, `cuppa verify-backup`, automatic snapshot before migrations, restore script.
 - **Money rules** — integer rupiah, price copied into order lines, rounding recorded as its own line, paid orders locked by the database.
@@ -55,6 +56,8 @@ cargo run --release
 ```
 
 Open `http://localhost:8080/setup`, enter the code, create the owner. Then add menu, tables, and staff.
+
+**Install as an app:** open Cuppa in Chrome/Edge on the tablet and choose *Install app* (PWA).
 
 **Docker:** `docker compose up -d --build` (publishes on loopback only; put nginx/Caddy with HTTPS in front — see the sample in [docs/SPEC.md](docs/SPEC.md)).
 

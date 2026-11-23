@@ -13,6 +13,7 @@ pub mod escpos;
 pub mod handlers;
 pub mod money;
 pub mod rand_id;
+pub mod secrets;
 pub mod security;
 pub mod totp;
 pub mod views;
@@ -26,7 +27,7 @@ use axum::{
 };
 use futures_util::Stream;
 use handlers::{
-    admin, cashier, customer, extras, inventory, more, ops, orders, owner, public, receipt, reports, session,
+    admin, cashier, customer, extras, gateway, inventory, more, ops, orders, owner, public, receipt, reports, session,
 };
 use sqlx::SqlitePool;
 use std::{
@@ -46,10 +47,12 @@ pub struct AppState {
     pub limiter: Arc<security::RateLimiter>,
     /// One-time first-run code (printed to the server log). `None` once an owner exists.
     pub setup_code: Arc<Mutex<Option<String>>>,
+    pub secret_key: Arc<secrets::SecretKey>,
 }
 
 impl AppState {
     pub async fn new(cfg: config::Config) -> anyhow::Result<Self> {
+        let secret_key = Arc::new(secrets::load_or_create(&cfg.database_url)?);
         let db = db::connect(&cfg.database_url).await?;
         let users: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users").fetch_one(&db).await?;
         let setup_code = (users == 0).then(|| rand_id::hex_token(8));
@@ -59,6 +62,7 @@ impl AppState {
             events: broadcast::channel(64).0,
             limiter: Arc::new(security::RateLimiter::default()),
             setup_code: Arc::new(Mutex::new(setup_code)),
+            secret_key,
         })
     }
 }
@@ -68,6 +72,25 @@ async fn events(State(st): State<AppState>, _staff: auth::Staff) -> Sse<impl Str
         .filter_map(|m| m.ok())
         .map(|m| Ok(Event::default().event(m).data("1")));
     Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(20)))
+}
+
+/// The service worker must be served from the root to control the whole app.
+async fn service_worker() -> impl axum::response::IntoResponse {
+    let body = tokio::fs::read_to_string("static/sw.js").await.unwrap_or_default();
+    (
+        [
+            (axum::http::header::CONTENT_TYPE, "text/javascript; charset=utf-8"),
+            (axum::http::header::CACHE_CONTROL, "no-cache"),
+            (axum::http::HeaderName::from_static("service-worker-allowed"), "/"),
+        ],
+        body,
+    )
+}
+
+async fn offline(State(st): State<AppState>) -> error::AppResult<axum::response::Html<String>> {
+    views::render(views::OfflinePage {
+        ctx: views::Ctx::guest(&st).await?,
+    })
 }
 
 async fn health() -> &'static str {
@@ -87,6 +110,7 @@ pub fn router(st: AppState) -> Router {
         .route("/m/{token}/call", post(public::call))
         .route("/r/{token}", get(receipt::public))
         .route("/display", get(public::display))
+        .route("/webhooks/midtrans", post(gateway::webhook_midtrans))
         .route("/uploads/{name}", get(more::serve_upload))
         .route("/m/{token}/orders/{id}/loyalty", post(more::loyalty_join))
         .route("/display/part", get(public::display_part))
@@ -145,7 +169,15 @@ pub fn router(st: AppState) -> Router {
         .route("/owner/security", get(more::security_get))
         .route("/owner/security/enable", post(more::security_enable))
         .route("/owner/security/disable", post(more::security_disable))
+        .route("/owner/items/{id}/prices", get(more::prices_get).post(more::prices_add))
+        .route("/owner/price-rules/{id}/toggle", post(more::prices_toggle))
         .route("/cashier/floor", get(ops::floor))
+        .route(
+            "/owner/integrations",
+            get(gateway::integrations_get).post(gateway::integrations_post),
+        )
+        .route("/orders/{id}/gateway/qris", post(gateway::charge_qris))
+        .route("/gateway/charges/{id}/check", post(gateway::check_charge))
         .route("/orders/{id}/merge", post(ops::merge))
         .route("/owner/ingredients", get(inventory::get).post(inventory::add))
         .route("/owner/ingredients/{id}/buy", post(inventory::buy))
@@ -189,6 +221,8 @@ pub fn router(st: AppState) -> Router {
         .merge(public)
         .merge(staff)
         .route("/healthz", get(health))
+        .route("/sw.js", get(service_worker))
+        .route("/offline", get(offline))
         .route("/api/v1/sales", get(ops::api_sales))
         .route("/api/v1/menu", get(ops::api_menu))
         .nest_service("/static", ServeDir::new("static"))

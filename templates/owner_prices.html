@@ -1,0 +1,21 @@
+{% extends "app.html" %}
+{% block title %}Harga terjadwal {{ menu_name }}{% endblock %}
+{% block body %}
+<div class="page-head"><h1>Harga terjadwal · {{ menu_name }}</h1><a href="/owner/menu">← Menu</a></div>
+{% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
+<p class="muted">Harga normal {{ list_price }}. Aturan di bawah berlaku otomatis pada jam tertentu (zona waktu kafe), misalnya happy hour. Jika beberapa aturan berlaku, harga termurah dipakai. Harga yang ditagih disalin ke pesanan, jadi riwayat tidak berubah.</p>
+<form class="panel" method="post" action="/owner/items/{{ menu_id }}/prices">
+  <h3>Aturan baru</h3>
+  <div class="row">
+    <div class="field"><label for="pp">Harga (Rp)</label><input id="pp" name="price" type="number" min="0" required inputmode="numeric"></div>
+    <div class="field"><label for="pf">Mulai</label><input id="pf" name="from_hm" type="time" required></div>
+    <div class="field"><label for="pt">Selesai</label><input id="pt" name="to_hm" type="time" required></div>
+    <div class="field"><label for="pl">Label</label><input id="pl" name="label" maxlength="30" placeholder="Happy hour"></div>
+  </div>
+  <button class="btn primary" type="submit">Tambah aturan</button>
+</form>
+<div class="panel">
+{% if rules.is_empty() %}<div class="empty"><strong>Belum ada aturan</strong>Menu ini selalu dijual dengan harga normal</div>{% else %}
+<table class="ledger"><tbody>{% for r in rules %}<tr><td>{{ r.2 }}</td><td>{{ r.3 }}</td><td class="num">{{ r.1 }}</td><td>{% if r.4 %}<span class="chip ok">Aktif</span>{% else %}<span class="chip neutral">Nonaktif</span>{% endif %}</td><td><form method="post" action="/owner/price-rules/{{ r.0 }}/toggle"><button class="btn" type="submit">{% if r.4 %}Nonaktifkan{% else %}Aktifkan{% endif %}</button></form></td></tr>{% endfor %}</tbody></table>{% endif %}
+</div>
+{% endblock %}

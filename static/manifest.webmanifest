@@ -1,0 +1,17 @@
+{
+  "name": "Cuppa POS",
+  "short_name": "Cuppa",
+  "description": "Kasir dan pesanan QR untuk kafe",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f6f5f3",
+  "theme_color": "#a8481f",
+  "lang": "id",
+  "icons": [
+    { "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/static/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

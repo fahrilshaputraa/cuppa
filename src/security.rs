@@ -50,7 +50,10 @@ pub async fn headers(State(st): State<AppState>, req: Request, next: Next) -> Re
 /// CSRF defence in depth (the session cookie is also SameSite=Strict):
 /// state-changing requests must come from our own origin.
 pub async fn csrf(req: Request, next: Next) -> Response {
-    if matches!(*req.method(), Method::GET | Method::HEAD | Method::OPTIONS) {
+    // Provider webhooks have no browser Origin; they are authenticated by their signature instead.
+    if matches!(*req.method(), Method::GET | Method::HEAD | Method::OPTIONS)
+        || req.uri().path().starts_with("/webhooks/")
+    {
         return next.run(req).await;
     }
     let h = req.headers();

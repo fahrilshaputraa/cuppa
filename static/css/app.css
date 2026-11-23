@@ -226,3 +226,6 @@ progress::-webkit-progress-bar{background:var(--surface-2)}progress::-webkit-pro
 .tile{display:flex;flex-direction:column;gap:var(--s1);padding:var(--s4);border-radius:var(--r-card);border:1px solid var(--line);background:var(--surface);text-decoration:none;color:var(--ink);min-height:104px}
 .tile strong{font-size:var(--t-lg);font-weight:600}.tile.free{opacity:.6;border-style:dashed;background:transparent}
 .tile.busy{border-color:var(--accent)}.tile.busy:hover{background:var(--surface-2)}
+.nav a[data-i="integrations"]{--i:url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27black%27 stroke-width=%271.6%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3E%3Cpath d=%22M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1%22/%3E%3Cpath d=%22M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1%22/%3E%3C/svg%3E")}
+.sep{border:0;border-top:1px solid var(--line);margin:var(--s5) 0}
+.charge{margin-bottom:var(--s4)}.charge .qr{max-width:240px;margin:var(--s3) 0}

@@ -362,6 +362,8 @@ pub struct OrderDetail {
     pub refunded: String,
     pub refund_left: i64,
     pub merge_options: Vec<(String, String)>,
+    pub gateway_on: bool,
+    pub charges: Vec<ChargeView>,
     pub paid_lines: Vec<(String, String)>,
     pub remaining: i64,
     pub remaining_fmt: String,
@@ -708,4 +710,43 @@ pub struct LedgerPage {
     pub credit: String,
     pub balanced: bool,
     pub expenses: String,
+}
+
+#[derive(Template)]
+#[template(path = "offline.html")]
+pub struct OfflinePage {
+    pub ctx: Ctx,
+}
+
+#[derive(Template)]
+#[template(path = "owner_integrations.html")]
+pub struct IntegrationsPage {
+    pub ctx: Ctx,
+    pub error: Option<String>,
+    pub notice: Option<String>,
+    pub provider: String,
+    pub key_set: bool,
+    pub webhook_in: String,
+    pub webhook_url: String,
+    pub has_secret: bool,
+    pub new_secret: Option<String>,
+    pub charges: Vec<(String, String, String, String, String)>,
+}
+
+pub struct ChargeView {
+    pub id: String,
+    pub amount: String,
+    pub status: String,
+    pub qr_svg: String,
+}
+
+#[derive(Template)]
+#[template(path = "owner_prices.html")]
+pub struct PricesPage {
+    pub ctx: Ctx,
+    pub error: Option<String>,
+    pub menu_id: String,
+    pub menu_name: String,
+    pub list_price: String,
+    pub rules: Vec<(String, String, String, String, bool)>,
 }

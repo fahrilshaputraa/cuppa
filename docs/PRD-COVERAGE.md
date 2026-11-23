@@ -49,14 +49,14 @@ Honest status of every PRD requirement. ✅ done and tested · 🟡 partial · �
 ## Additional (FR-41 – FR-66)
 | ID | Status | Notes |
 | --- | --- | --- |
-| FR-41–42 | ⏳ | Payment gateway (Midtrans/Xendit). Needs merchant accounts and a public HTTPS URL to build and test against. |
+| FR-41–42 | 🟡 | Midtrans QRIS: dynamic QR per order, HMAC-SHA512 signed idempotent webhook, amount check, manual status check/reconciliation, orphaned money flagged for review. Tested against a local mock of the API only — **not yet against a live Midtrans account**. Xendit and gateway refunds are not built (refunds stay manual). |
 | FR-43 | ✅ | Split / mixed payment. |
 | FR-44 | ✅ | Ingredients, recipes, purchases with moving-average cost, opname, waste, immutable movements, actual cost per order. Suppliers are not modelled. |
 | FR-45 | ✅ | Expenses, per-menu cost (manual or recipe), gross and net profit. |
 | FR-46, 60, 66 | ⏳ | Multi-branch / multi-tenant: needs the Postgres backend and a tenant model. |
 | FR-47, 58 | ✅ | Rating per order and per menu item. |
 | FR-48 | ✅ | Busiest hours, margin per menu, automatic busy mode (threshold + extra wait). |
-| FR-49 | 🟡 | Vouchers/promos done; scheduled prices not built. |
+| FR-49 | ✅ | Vouchers/promos and time-of-day (happy hour) prices, snapshotted on the order line. |
 | FR-50, 56 | ⏳ | Custom CSS/JS: deliberately deferred until an independent security review (the PRD itself requires it). |
 | FR-51 | 🟡 | Owner 2FA (TOTP, replay-protected). Custom roles are covered by per-user permission overrides. |
 | FR-52 | ✅ | Public digital receipt link + WhatsApp share link (no WhatsApp API sending). |
@@ -66,9 +66,9 @@ Honest status of every PRD requirement. ✅ done and tested · 🟡 partial · �
 | FR-57 | ✅ | Opt-in loyalty with consent, points, favourite item and erasure. |
 | FR-59 | ⏳ | GoFood/GrabFood/ShopeeFood integration: needs partner access. |
 | FR-61 | ✅ | Reservations (deposit is a note, not accounted money). |
-| FR-62 | 🟡 | Customer queue display and read-only API with hashed, revocable keys. Outgoing webhooks not built. |
-| FR-63 | ⏳ | Full offline mode with conflict resolution. |
-| FR-64 | ⏳ | Native wrappers. |
+| FR-62 | ✅ | Customer queue display, read-only API with hashed revocable keys, signed `order.paid` webhooks (https only, SSRF-guarded, DNS pinned). The outgoing webhook was unit-tested for its URL guard but not against a live receiver. |
+| FR-63 | 🟡 | Installable PWA with a service worker (public assets + offline notice; authenticated pages are never cached). The server runs on the café LAN, so cashier and kitchen keep working without internet. Offline transactions while the server itself is unreachable (with conflict resolution) are not built. |
+| FR-64 | 🟡 | Installable PWA (manifest + icons) for Android/PC. Native iOS/Android/desktop wrappers with direct printer access are not built. |
 | FR-65 | ✅ | Balanced in-app ledger, journal CSV, local-tax CSV. |
 | FR-36 | ⏳ | Postgres. The data layer uses SQLite-specific SQL and triggers; a second dialect is a project of its own (ADR 0001). |
 

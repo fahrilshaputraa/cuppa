@@ -72,13 +72,15 @@ pub async fn create_order(conn: &mut SqliteConnection, st: &AppState, o: NewOrde
                 .execute(&mut *conn)
                 .await?;
         }
+        let base_price =
+            effective_price(conn, &r.id, r.price, &clock::hm(clock::now(), st.cfg.tz_offset_hours)).await?;
         let (extra, label) = resolve_modifiers(conn, &r.id, &req.mods).await?;
         let name = if label.is_empty() {
             r.name.clone()
         } else {
             format!("{} ({})", r.name, label)
         };
-        let unit = r.price + extra;
+        let unit = base_price + extra;
         subtotal += unit * req.qty;
         let cost = super::inventory::recipe_cost(conn, &r.id).await?.unwrap_or(r.cost);
         lines.push((r.id, name, unit, req.qty, cost));
@@ -134,6 +136,27 @@ pub async fn create_order(conn: &mut SqliteConnection, st: &AppState, o: NewOrde
     }
     audit::record(conn, Entry::new(o.cashier_id, "order.created", "order", Some(&id))).await?;
     Ok((id, number))
+}
+
+/// Happy-hour style prices (FR-49): the cheapest active rule covering the current local time wins; otherwise the list price.
+pub async fn effective_price(conn: &mut SqliteConnection, menu_id: &str, list: i64, hm_now: &str) -> sqlx::Result<i64> {
+    let rules: Vec<(i64, String, String)> =
+        sqlx::query_as("SELECT price, from_hm, to_hm FROM price_rules WHERE menu_id = ? AND active = 1")
+            .bind(menu_id)
+            .fetch_all(conn)
+            .await?;
+    Ok(rules
+        .into_iter()
+        .filter(|(_, f, t)| {
+            if f <= t {
+                hm_now >= f.as_str() && hm_now < t.as_str()
+            } else {
+                hm_now >= f.as_str() || hm_now < t.as_str()
+            }
+        })
+        .map(|r| r.0)
+        .min()
+        .unwrap_or(list))
 }
 
 /// Validate the chosen modifiers against the item's groups. Returns (extra price, "A, B" label).
@@ -350,6 +373,40 @@ pub async fn render_detail(
     } else {
         Vec::new()
     };
+    let gateway_on: bool = sqlx::query_scalar(
+        "SELECT gateway_provider != '' AND gateway_key_enc IS NOT NULL FROM outlet_settings WHERE id = 1",
+    )
+    .fetch_one(&mut *c)
+    .await?;
+    let raw_charges: Vec<(String, i64, String, Option<String>)> = sqlx::query_as(
+        "SELECT id, amount, status, qr_string FROM gateway_charges WHERE order_id = ? ORDER BY created_at DESC LIMIT 5",
+    )
+    .bind(id)
+    .fetch_all(&mut *c)
+    .await?;
+    let charges: Vec<ChargeView> = raw_charges
+        .into_iter()
+        .map(|(cid, amount, status, qr)| {
+            let svg = if status == "pending" {
+                qr.and_then(|q| qrcode::QrCode::new(q.as_bytes()).ok())
+                    .map(|code| {
+                        code.render::<qrcode::render::svg::Color>()
+                            .min_dimensions(220, 220)
+                            .quiet_zone(true)
+                            .build()
+                    })
+                    .unwrap_or_default()
+            } else {
+                String::new()
+            };
+            ChargeView {
+                id: cid,
+                amount: rupiah(amount),
+                status,
+                qr_svg: svg,
+            }
+        })
+        .collect();
     let (label, class) = status_meta(&o.status);
     let editable = matches!(o.status.as_str(), "pending" | "confirmed" | "ready");
     let page = OrderDetail {
@@ -380,6 +437,8 @@ pub async fn render_detail(
         rounding: rupiah(o.rounding),
         has_rounding: o.rounding != 0,
         total: rupiah(o.total),
+        gateway_on,
+        charges,
         merge_options: merge_opts,
         quick: quick_cash(o.total).into_iter().map(|v| (v, rupiah(v))).collect(),
         status_label: label,
@@ -683,6 +742,56 @@ pub async fn move_table(
 
 // ---- Payment ---------------------------------------------------------------------------------
 
+pub struct PaymentIn<'a> {
+    pub order_id: &'a str,
+    pub shift_id: &'a str,
+    pub method: &'a str,
+    pub amount: i64,
+    pub remaining: i64,
+    pub tendered: Option<i64>,
+    pub reference: Option<&'a str>,
+    pub cashier_id: &'a str,
+}
+
+/// The single place a payment is recorded (cashier screen and gateway webhook). Returns `true` when it settled the order,
+/// which then locks, issues the digital-receipt token, consumes ingredients and is audited.
+pub async fn apply_payment(conn: &mut SqliteConnection, p: PaymentIn<'_>) -> AppResult<bool> {
+    let now = clock::now();
+    sqlx::query("INSERT INTO payments (id, order_id, shift_id, method, amount, tendered, reference, cashier_id, created_at) VALUES (?,?,?,?,?,?,?,?,?)")
+        .bind(rand_id::id())
+        .bind(p.order_id)
+        .bind(p.shift_id)
+        .bind(p.method)
+        .bind(p.amount)
+        .bind(p.tendered)
+        .bind(p.reference)
+        .bind(p.cashier_id)
+        .bind(now)
+        .execute(&mut *conn)
+        .await?;
+    let fully_paid = p.amount == p.remaining;
+    if fully_paid {
+        sqlx::query("UPDATE orders SET status = 'paid', paid_at = ?, cashier_id = ?, receipt_token = ? WHERE id = ?")
+            .bind(now)
+            .bind(p.cashier_id)
+            .bind(rand_id::hex_token(16))
+            .bind(p.order_id)
+            .execute(&mut *conn)
+            .await?;
+        super::inventory::deduct_for_order(conn, p.order_id, p.cashier_id).await?;
+    }
+    let detail = format!("{} {}", p.method, p.amount);
+    let mut e = Entry::new(
+        Some(p.cashier_id),
+        if fully_paid { "order.paid" } else { "order.part_paid" },
+        "order",
+        Some(p.order_id),
+    );
+    e.detail = Some(&detail);
+    audit::record(conn, e).await?;
+    Ok(fully_paid)
+}
+
 #[derive(Deserialize)]
 pub struct PayForm {
     method: String,
@@ -769,45 +878,25 @@ pub async fn pay(
         }
         None
     };
-    let now = clock::now();
-    sqlx::query("INSERT INTO payments (id, order_id, shift_id, method, amount, tendered, reference, cashier_id, created_at) VALUES (?,?,?,?,?,?,?,?,?)")
-        .bind(rand_id::id())
-        .bind(&id)
-        .bind(&shift)
-        .bind(&f.method)
-        .bind(amount)
-        .bind(tendered)
-        .bind(if reference.is_empty() { None } else { Some(&reference) })
-        .bind(&staff.id)
-        .bind(now)
-        .execute(&mut *tx)
-        .await?;
-    let fully_paid = amount == remaining;
-    if fully_paid {
-        sqlx::query("UPDATE orders SET status = 'paid', paid_at = ?, cashier_id = ?, receipt_token = ? WHERE id = ?")
-            .bind(now)
-            .bind(&staff.id)
-            .bind(rand_id::hex_token(16))
-            .bind(&id)
-            .execute(&mut *tx)
-            .await?;
-    }
-    if fully_paid {
-        super::inventory::deduct_for_order(&mut tx, &id, &staff.id).await?;
-    }
-    let mut e = Entry::new(
-        Some(&staff.id),
-        if fully_paid { "order.paid" } else { "order.part_paid" },
-        "order",
-        Some(&id),
-    );
-    let detail = format!("{} {}", f.method, amount);
-    e.detail = Some(&detail);
-    audit::record(&mut tx, e).await?;
+    let fully_paid = apply_payment(
+        &mut tx,
+        PaymentIn {
+            order_id: &id,
+            shift_id: &shift,
+            method: &f.method,
+            amount,
+            remaining,
+            tendered,
+            reference: if reference.is_empty() { None } else { Some(&reference) },
+            cashier_id: &staff.id,
+        },
+    )
+    .await?;
     tx.commit().await?;
     notify(&st);
     if fully_paid {
         super::receipt::auto_print(st.clone(), id.clone());
+        super::gateway::emit_order_paid(st.clone(), id.clone());
         Ok(Redirect::to(&format!("/orders/{id}/receipt")).into_response())
     } else {
         render_detail(

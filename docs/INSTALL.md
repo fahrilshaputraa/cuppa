@@ -45,6 +45,15 @@ Server at the café without a public address? Use a Cloudflare Tunnel in front o
 5. **Printer**: Settings → printer address (`192.168.x.x:9100`) → **Tes cetak** (also fires the cash drawer).
 6. **Shift**: cashier opens the shift with the starting cash.
 
+## Online QRIS (optional)
+1. Owner → **Integrasi** → choose Midtrans, paste the **server key** (stored encrypted; `data/secret.key` holds the encryption key, back it up with `data/`).
+2. In the Midtrans dashboard set *Payment Notification URL* to `https://<your-domain>/webhooks/midtrans` (needs the public HTTPS setup above).
+3. On an order, press **Buat QRIS**; the customer scans the QR on the cashier screen. If a notification is missed, press **Cek status**.
+4. Use the sandbox first: set `CUPPA_MIDTRANS_BASE=https://api.sandbox.midtrans.com`.
+
+## Install on the tablet
+Open the café URL in Chrome/Edge → menu → **Install app**. Registered device + PIN login works the same as in the browser.
+
 ## Updates & backups
 - Update: `git pull && docker compose up -d --build` (or replace the binary and restart). If a new version changes the database, Cuppa first writes `data/backups/pre-migrate-<time>.db`.
 - Backups: automatic daily to `data/backups/` (last 14). **Also download one weekly** from Settings and keep it off the server.

@@ -3004,3 +3004,390 @@ async fn busy_mode_and_per_menu_rating() {
     .await;
     assert_eq!(db_one::<i64>(&a, "SELECT stars FROM order_item_ratings").await, 5);
 }
+
+// ---------------------------------------------------------------------------------------------
+// Payment gateway (against a local mock of the Midtrans API), PWA files
+// ---------------------------------------------------------------------------------------------
+
+use std::sync::{Arc, Mutex};
+
+/// A tiny stand-in for the Midtrans API: creates charges and reports a status we control.
+async fn mock_midtrans() -> (String, Arc<Mutex<String>>) {
+    let status = Arc::new(Mutex::new("pending".to_string()));
+    let s2 = status.clone();
+    let app = Router::new()
+        .route(
+            "/v2/charge",
+            axum::routing::post(|axum::Json(v): axum::Json<serde_json::Value>| async move {
+                let amount = v["transaction_details"]["gross_amount"].as_i64().unwrap_or(0);
+                axum::Json(serde_json::json!({
+                    "status_code": "201", "transaction_status": "pending", "gross_amount": format!("{amount}.00"),
+                    "order_id": v["transaction_details"]["order_id"], "qr_string": "00020101021226CUPPAMOCKQR"
+                }))
+            }),
+        )
+        .route(
+            "/v2/{id}/status",
+            axum::routing::get(move |axum::extract::Path(id): axum::extract::Path<String>| {
+                let s = s2.clone();
+                async move {
+                    let st = s.lock().unwrap().clone();
+                    axum::Json(serde_json::json!({"order_id": id, "transaction_status": st, "fraud_status": "accept", "gross_amount": "55000.00", "status_code": "200"}))
+                }
+            }),
+        );
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = l.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
+    (format!("http://{addr}"), status)
+}
+
+async fn app_with_gateway() -> (App, Arc<Mutex<String>>) {
+    let (base, status) = mock_midtrans().await;
+    let dir = std::env::temp_dir().join(format!("cuppa-test-{}", cuppa::rand_id::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut cfg = Config::for_tests();
+    cfg.database_url = format!("sqlite://{}/t.db", dir.display());
+    cfg.midtrans_base = base;
+    let st = AppState::new(cfg).await.unwrap();
+    let code = st.setup_code.lock().unwrap().clone().unwrap();
+    (
+        App {
+            app: router(st.clone()),
+            st,
+            code,
+        },
+        status,
+    )
+}
+
+fn sig(order_id: &str, code: &str, gross: &str, key: &str) -> String {
+    cuppa::handlers::gateway::midtrans_signature(order_id, code, gross, key)
+}
+
+async fn webhook(a: &App, body: serde_json::Value) -> Res {
+    // Webhooks come from the provider: no cookie, no Origin header.
+    let mut req = Request::builder()
+        .method("POST")
+        .uri("/webhooks/midtrans")
+        .header(header::HOST, "localhost:8080")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(body.to_string()))
+        .unwrap();
+    req.extensions_mut()
+        .insert(ConnectInfo("52.1.2.3:443".parse::<SocketAddr>().unwrap()));
+    let r = a.app.clone().oneshot(req).await.unwrap();
+    let (p, body) = r.into_parts();
+    Res {
+        status: p.status,
+        headers: p.headers,
+        body: String::from_utf8_lossy(&body.collect().await.unwrap().to_bytes()).into(),
+    }
+}
+
+#[tokio::test]
+async fn gateway_charge_webhook_is_signed_idempotent_and_amount_checked() {
+    let (a, mock_status) = app_with_gateway().await;
+    let owner = setup_owner(&a).await;
+    let (oid, cashier, _) = confirmed_order(&a, &owner, 2).await; // total 55.000
+    let key = "SB-Mid-server-test-key";
+    // Not configured yet -> friendly refusal, nothing created.
+    let none = send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/gateway/qris"),
+        Some(&cashier),
+        Some(""),
+        true,
+    )
+    .await;
+    assert!(none.body.contains("belum diatur"));
+    // Owner configures it; the key is encrypted at rest and never echoed back.
+    let cfg = send(
+        &a,
+        "POST",
+        "/owner/integrations",
+        Some(&owner),
+        Some(&format!("provider=midtrans&server_key={key}")),
+        true,
+    )
+    .await;
+    assert!(cfg.body.contains("tersimpan") && !cfg.body.contains(key));
+    let enc: String = db_one(&a, "SELECT gateway_key_enc FROM outlet_settings").await;
+    assert!(!enc.contains("SB-Mid") && enc.len() > 40);
+    assert_eq!(
+        send(&a, "GET", "/owner/integrations", Some(&cashier), None, false)
+            .await
+            .status,
+        StatusCode::FORBIDDEN
+    );
+
+    let made = send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/gateway/qris"),
+        Some(&cashier),
+        Some(""),
+        true,
+    )
+    .await;
+    assert!(
+        made.body.contains("QRIS dibuat") && made.body.contains("<svg"),
+        "{}",
+        made.body
+    );
+    let (poid, amount): (String, i64) = sqlx::query_as("SELECT provider_order_id, amount FROM gateway_charges")
+        .fetch_one(&a.st.db)
+        .await
+        .unwrap();
+    assert_eq!(amount, 55_000);
+
+    // Wrong signature: refused, no payment.
+    let forged = webhook(&a, serde_json::json!({"order_id": poid, "status_code": "200", "gross_amount": "55000.00", "transaction_status": "settlement", "signature_key": "00"})).await;
+    assert_eq!(forged.status, StatusCode::FORBIDDEN);
+    assert_eq!(db_one::<i64>(&a, "SELECT COUNT(*) FROM payments").await, 0);
+    // Valid signature but a different amount: not applied.
+    let wrong_amt = webhook(&a, serde_json::json!({"order_id": poid, "status_code": "200", "gross_amount": "1000.00", "transaction_status": "settlement", "signature_key": sig(&poid, "200", "1000.00", key)})).await;
+    assert_eq!(wrong_amt.status, StatusCode::OK);
+    assert_eq!(db_one::<i64>(&a, "SELECT COUNT(*) FROM payments").await, 0);
+    // Valid settlement: payment recorded, order locked as paid with a digital receipt token.
+    let ok = serde_json::json!({"order_id": poid, "status_code": "200", "gross_amount": "55000.00", "transaction_status": "settlement", "fraud_status": "accept", "signature_key": sig(&poid, "200", "55000.00", key)});
+    assert_eq!(webhook(&a, ok.clone()).await.status, StatusCode::OK);
+    assert_eq!(db_one::<String>(&a, "SELECT status FROM orders").await, "paid");
+    assert_eq!(db_one::<String>(&a, "SELECT method FROM payments").await, "qris");
+    assert_eq!(db_one::<String>(&a, "SELECT reference FROM payments").await, poid);
+    assert_eq!(
+        db_one::<String>(&a, "SELECT status FROM gateway_charges").await,
+        "settled"
+    );
+    // Replays (providers retry) change nothing.
+    for _ in 0..3 {
+        assert_eq!(webhook(&a, ok.clone()).await.status, StatusCode::OK);
+    }
+    assert_eq!(db_one::<i64>(&a, "SELECT COUNT(*) FROM payments").await, 1);
+    // Unknown order id.
+    let unknown = webhook(&a, serde_json::json!({"order_id": "nope", "status_code": "200", "gross_amount": "1.00", "transaction_status": "settlement", "signature_key": sig("nope", "200", "1.00", key)})).await;
+    assert_eq!(unknown.status, StatusCode::NOT_FOUND);
+    let _ = mock_status;
+}
+
+#[tokio::test]
+async fn gateway_manual_status_check_reconciles_a_missed_webhook() {
+    let (a, mock_status) = app_with_gateway().await;
+    let owner = setup_owner(&a).await;
+    let (oid, cashier, _) = confirmed_order(&a, &owner, 2).await;
+    send(
+        &a,
+        "POST",
+        "/owner/integrations",
+        Some(&owner),
+        Some("provider=midtrans&server_key=SB-key"),
+        true,
+    )
+    .await;
+    send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/gateway/qris"),
+        Some(&cashier),
+        Some(""),
+        true,
+    )
+    .await;
+    let cid: String = db_one(&a, "SELECT id FROM gateway_charges").await;
+    let waiting = send(
+        &a,
+        "POST",
+        &format!("/gateway/charges/{cid}/check"),
+        Some(&cashier),
+        Some(""),
+        true,
+    )
+    .await;
+    assert!(waiting.body.contains("Belum dibayar"), "{}", waiting.body);
+    *mock_status.lock().unwrap() = "settlement".into();
+    let done = send(
+        &a,
+        "POST",
+        &format!("/gateway/charges/{cid}/check"),
+        Some(&cashier),
+        Some(""),
+        true,
+    )
+    .await;
+    assert!(
+        done.body.contains("QRIS diterima") || done.body.contains("sudah diproses"),
+        "{}",
+        done.body
+    );
+    assert_eq!(db_one::<String>(&a, "SELECT status FROM orders").await, "paid");
+    // A second check is a no-op.
+    let again = send(
+        &a,
+        "POST",
+        &format!("/gateway/charges/{cid}/check"),
+        Some(&cashier),
+        Some(""),
+        true,
+    )
+    .await;
+    assert!(again.body.contains("sudah diproses"), "{}", again.body);
+    assert_eq!(db_one::<i64>(&a, "SELECT COUNT(*) FROM payments").await, 1);
+}
+
+#[tokio::test]
+async fn gateway_money_for_a_voided_order_is_flagged_not_applied() {
+    let (a, _) = app_with_gateway().await;
+    let owner = setup_owner(&a).await;
+    let (oid, cashier, item) = confirmed_order(&a, &owner, 2).await;
+    let key = "SB-key";
+    send(
+        &a,
+        "POST",
+        "/owner/integrations",
+        Some(&owner),
+        Some(&format!("provider=midtrans&server_key={key}")),
+        true,
+    )
+    .await;
+    send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/gateway/qris"),
+        Some(&cashier),
+        Some(""),
+        true,
+    )
+    .await;
+    // The customer changed their mind: the item is voided before the QR is paid.
+    let item_id: String = db_one(&a, "SELECT id FROM order_items").await;
+    send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/items/{item_id}/void"),
+        Some(&cashier),
+        Some("reason=batal"),
+        true,
+    )
+    .await;
+    let poid: String = db_one(&a, "SELECT provider_order_id FROM gateway_charges").await;
+    let w = webhook(&a, serde_json::json!({"order_id": poid, "status_code": "200", "gross_amount": "55000.00", "transaction_status": "settlement", "fraud_status": "accept", "signature_key": sig(&poid, "200", "55000.00", key)})).await;
+    assert_eq!(w.status, StatusCode::OK);
+    assert_eq!(db_one::<i64>(&a, "SELECT COUNT(*) FROM payments").await, 0);
+    assert_eq!(
+        db_one::<String>(&a, "SELECT status FROM gateway_charges").await,
+        "unapplied"
+    );
+    assert_eq!(
+        db_one::<i64>(&a, "SELECT COUNT(*) FROM audit_log WHERE action = 'gateway.unapplied'").await,
+        1
+    );
+    let _ = item;
+}
+
+#[tokio::test]
+async fn pwa_files_are_served_with_the_right_headers() {
+    let a = app().await;
+    let sw = send(&a, "GET", "/sw.js", None, None, false).await;
+    assert_eq!(sw.status, StatusCode::OK);
+    assert!(
+        sw.headers[header::CONTENT_TYPE]
+            .to_str()
+            .unwrap()
+            .contains("javascript")
+    );
+    assert_eq!(sw.headers["service-worker-allowed"], "/");
+    assert_eq!(sw.headers[header::CACHE_CONTROL], "no-cache");
+    // The worker never caches pages, only /static and the offline notice.
+    assert!(sw.body.contains("NEVER cached") && sw.body.contains("/offline"));
+    let man = send(&a, "GET", "/static/manifest.webmanifest", None, None, false).await;
+    assert_eq!(man.status, StatusCode::OK);
+    assert!(man.body.contains("\"display\": \"standalone\"") && man.body.contains("icon-512.png"));
+    assert_eq!(
+        send(&a, "GET", "/static/icons/icon-192.png", None, None, false)
+            .await
+            .status,
+        StatusCode::OK
+    );
+    let off = send(&a, "GET", "/offline", None, None, false).await;
+    assert!(off.body.contains("Tidak terhubung"));
+    assert!(off.body.contains("rel=\"manifest\"") && off.body.contains("theme-color"));
+}
+
+#[tokio::test]
+async fn scheduled_prices_apply_in_their_window_and_are_snapshotted() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let (token, item, _) = seed(&a, &owner).await;
+    // A rule that covers the whole day (00:00–23:59) so the test does not depend on the clock.
+    let bad = send(
+        &a,
+        "POST",
+        &format!("/owner/items/{item}/prices"),
+        Some(&owner),
+        Some("price=1&from_hm=25:00&to_hm=10:00"),
+        true,
+    )
+    .await;
+    assert!(bad.body.contains("wajib diisi"));
+    send(
+        &a,
+        "POST",
+        &format!("/owner/items/{item}/prices"),
+        Some(&owner),
+        Some("price=20000&from_hm=00:00&to_hm=23:59&label=Promo"),
+        true,
+    )
+    .await;
+    send(
+        &a,
+        "POST",
+        &format!("/owner/items/{item}/prices"),
+        Some(&owner),
+        Some("price=22000&from_hm=00:00&to_hm=23:59"),
+        true,
+    )
+    .await;
+    send(
+        &a,
+        "POST",
+        &format!("/m/{token}/orders"),
+        None,
+        Some(&format!("qty_{item}=1")),
+        true,
+    )
+    .await;
+    // cheapest active rule wins: 20.000 (+10% tax = 22.000), not the 25.000 list price
+    assert_eq!(db_one::<i64>(&a, "SELECT unit_price FROM order_items").await, 20_000);
+    assert_eq!(db_one::<i64>(&a, "SELECT total FROM orders").await, 22_000);
+    // Deactivating the rules restores the list price for new orders; the old order keeps what it was charged.
+    for rid in sqlx::query_scalar::<_, String>("SELECT id FROM price_rules")
+        .fetch_all(&a.st.db)
+        .await
+        .unwrap()
+    {
+        send(
+            &a,
+            "POST",
+            &format!("/owner/price-rules/{rid}/toggle"),
+            Some(&owner),
+            Some(""),
+            true,
+        )
+        .await;
+    }
+    send(
+        &a,
+        "POST",
+        &format!("/m/{token}/orders"),
+        None,
+        Some(&format!("qty_{item}=1")),
+        true,
+    )
+    .await;
+    let prices: Vec<i64> = sqlx::query_scalar("SELECT unit_price FROM order_items ORDER BY rowid")
+        .fetch_all(&a.st.db)
+        .await
+        .unwrap();
+    assert_eq!(prices, vec![20_000, 25_000]);
+}
