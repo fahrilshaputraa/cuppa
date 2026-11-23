@@ -87,6 +87,23 @@ pub fn receipt_bytes(r: &Receipt) -> Vec<u8> {
     b
 }
 
+/// Kitchen/bar ticket: big, no prices.
+pub fn ticket_bytes(number: i64, where_label: &str, when: &str, lines: &[String], note: Option<&str>) -> Vec<u8> {
+    let mut b: Vec<u8> = vec![0x1b, b'@', 0x1b, b'a', 1, 0x1d, b'!', 0x11]; // center, double size
+    b.extend_from_slice(ascii(&format!("#{number}\n{where_label}\n")).as_bytes());
+    b.extend_from_slice(&[0x1d, b'!', 0x00, 0x1b, b'a', 0]);
+    b.extend_from_slice(ascii(&format!("{when}\n--------------------------------\n")).as_bytes());
+    for l in lines {
+        b.extend_from_slice(ascii(&format!("{l}\n")).as_bytes());
+    }
+    if let Some(n) = note {
+        b.extend_from_slice(ascii(&format!("\nCatatan: {n}\n")).as_bytes());
+    }
+    b.extend_from_slice(b"\n\n\n\n");
+    b.extend_from_slice(&[0x1d, b'V', 66, 0]);
+    b
+}
+
 /// ESC p m t1 t2: pulse pin 2.
 pub fn drawer_pulse() -> [u8; 5] {
     [0x1b, b'p', 0, 25, 250]

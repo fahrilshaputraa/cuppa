@@ -20,7 +20,25 @@ pub async fn connect(url: &str) -> anyhow::Result<SqlitePool> {
     // In-memory databases are per-connection: keep a single one for tests.
     let max = if url.contains(":memory:") { 1 } else { 8 };
     let pool = SqlitePoolOptions::new().max_connections(max).connect_with(opts).await?;
-    sqlx::migrate!("./migrations").run(&pool).await?;
+    let migrator = sqlx::migrate!("./migrations");
+    // Safe updates (FR-38): if an existing database is about to get new migrations, snapshot it first.
+    let applied: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
+        .fetch_one(&pool)
+        .await
+        .unwrap_or(-1);
+    if applied > 0
+        && applied < migrator.migrations.len() as i64
+        && let Some(dir) = crate::backup::dir_for(url)
+    {
+        std::fs::create_dir_all(&dir)?;
+        let target = dir.join(format!("pre-migrate-{}.db", crate::clock::now()));
+        sqlx::query("VACUUM INTO ?")
+            .bind(target.to_string_lossy().to_string())
+            .execute(&pool)
+            .await?;
+        tracing::warn!(file = %target.display(), "database backed up before applying migrations");
+    }
+    migrator.run(&pool).await?;
     Ok(pool)
 }
 

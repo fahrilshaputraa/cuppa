@@ -10,33 +10,37 @@ pub struct Ctx {
     pub role: String,
     pub user: String,
     pub nav: &'static str,
+    pub kitchen: bool,
+    pub qr: bool,
+    pub theme: String,
+    pub can_reports: bool,
 }
 
 impl Ctx {
     pub async fn staff(st: &AppState, s: &Staff, nav: &'static str) -> Result<Self, AppError> {
-        Ok(Self {
-            outlet: outlet_name(st).await?,
-            role: s.role.as_str().into(),
-            user: s.name.clone(),
-            nav,
-        })
+        let mut c = Self::guest(st).await?;
+        c.role = s.role.as_str().into();
+        c.user = s.name.clone();
+        c.nav = nav;
+        c.can_reports = s.can(crate::auth::Perm::Reports);
+        Ok(c)
     }
     pub async fn guest(st: &AppState) -> Result<Self, AppError> {
+        let (outlet, kitchen, qr, theme): (String, i64, i64, String) =
+            sqlx::query_as("SELECT outlet_name, kitchen_mode, qr_ordering, theme FROM outlet_settings WHERE id = 1")
+                .fetch_one(&st.db)
+                .await?;
         Ok(Self {
-            outlet: outlet_name(st).await?,
+            outlet,
             role: String::new(),
             user: String::new(),
             nav: "",
+            kitchen: kitchen == 1,
+            qr: qr == 1,
+            theme,
+            can_reports: false,
         })
     }
-}
-
-async fn outlet_name(st: &AppState) -> Result<String, AppError> {
-    Ok(
-        sqlx::query_scalar("SELECT outlet_name FROM outlet_settings WHERE id = 1")
-            .fetch_one(&st.db)
-            .await?,
-    )
 }
 
 pub fn render<T: Template>(t: T) -> Result<Html<String>, AppError> {
@@ -81,8 +85,11 @@ pub struct ItemRow {
     pub price: i64,
     pub active: i64,
     pub available: i64,
+    pub stock: Option<i64>,
 }
 pub struct ItemView {
+    pub stock: Option<i64>,
+    pub price: i64,
     pub id: String,
     pub name: String,
     pub category: String,
@@ -125,11 +132,19 @@ pub struct OwnerQr {
 }
 
 #[derive(sqlx::FromRow)]
+pub struct UserRow {
+    pub id: String,
+    pub name: String,
+    pub role: String,
+    pub active: i64,
+}
 pub struct UserView {
     pub id: String,
     pub name: String,
     pub role: String,
     pub active: i64,
+    pub is_owner: bool,
+    pub perms: Vec<(&'static str, &'static str, bool)>,
 }
 
 #[derive(Template)]
@@ -153,6 +168,15 @@ pub struct SettingsRow {
     pub paper_cols: i64,
     pub receipt_footer: String,
     pub open_drawer_on_cash: i64,
+    pub kitchen_mode: i64,
+    pub wizard_done: i64,
+    pub open_from: Option<String>,
+    pub open_to: Option<String>,
+    pub round_to: i64,
+    pub cashier_discount_max_bp: i64,
+    pub theme: String,
+    pub require_device: i64,
+    pub kitchen_printer_host: Option<String>,
 }
 
 #[derive(Template)]
@@ -162,6 +186,8 @@ pub struct OwnerSettings {
     pub error: Option<String>,
     pub notice: Option<String>,
     pub backups: Vec<String>,
+    pub version: &'static str,
+    pub discount_pct: String,
     pub s: SettingsRow,
     pub tax_pct: String,
     pub service_pct: String,
@@ -204,6 +230,7 @@ pub struct CashierPage {
 #[template(path = "cashier_queue.html")]
 pub struct CashierQueue {
     pub orders: Vec<QueueOrder>,
+    pub pending: usize,
 }
 
 #[derive(Template)]
@@ -224,9 +251,12 @@ pub struct MenuRow {
     pub name: String,
     pub price: i64,
     pub available: i64,
+    pub stock: Option<i64>,
     pub category: String,
 }
 pub struct MenuItemView {
+    pub groups: Vec<GroupView>,
+    pub stock: Option<i64>,
     pub id: String,
     pub name: String,
     pub price: i64,
@@ -242,6 +272,7 @@ pub struct MenuCategoryView {
 #[template(path = "cashier_new.html")]
 pub struct CashierNew {
     pub ctx: Ctx,
+    pub can_sold_out: bool,
     pub error: Option<String>,
     pub menu: Vec<MenuCategoryView>,
     pub tables: Vec<TableRow>,
@@ -259,23 +290,52 @@ pub struct LineView {
     pub line_fmt: String,
 }
 
+pub struct ItemLine {
+    pub id: String,
+    pub qty: i64,
+    pub name: String,
+    pub line_fmt: String,
+    pub voided: bool,
+    pub void_reason: String,
+}
+
 #[derive(Template)]
 #[template(path = "order_detail.html")]
 pub struct OrderDetail {
     pub ctx: Ctx,
     pub error: Option<String>,
+    pub notice: Option<String>,
     pub o: OrderRow,
     pub where_label: String,
-    pub lines: Vec<LineView>,
+    pub lines: Vec<ItemLine>,
     pub subtotal: String,
+    pub discount: String,
+    pub has_discount: bool,
     pub service: String,
     pub tax: String,
+    pub rounding: String,
+    pub has_rounding: bool,
     pub total: String,
+    pub quick: Vec<(i64, String)>,
     pub status_label: &'static str,
     pub status_class: &'static str,
-    pub quick: Vec<(i64, String)>,
     pub shift_open: bool,
-    pub void_denied: bool,
+    pub editable: bool,
+    pub can_discount: bool,
+    pub can_refund: bool,
+    pub discount_limit_pct: String,
+    pub tables: Vec<TableRow>,
+    pub refunded: String,
+    pub refund_left: i64,
+    pub refunds: Vec<(String, String, String)>,
+}
+
+pub struct MoveView {
+    pub time: String,
+    pub kind: &'static str,
+    pub amount: String,
+    pub reason: String,
+    pub who: String,
 }
 
 pub struct ZReport {
@@ -284,6 +344,8 @@ pub struct ZReport {
     pub expected: String,
     pub counted: String,
     pub difference: String,
+    pub cash_in: String,
+    pub cash_out: String,
 }
 
 #[derive(Template)]
@@ -293,12 +355,17 @@ pub struct ShiftPage {
     pub error: Option<String>,
     pub open: bool,
     pub report: Option<ZReport>,
+    pub movements: Vec<MoveView>,
+    pub can_cash: bool,
 }
 
 #[derive(Template)]
 #[template(path = "customer_menu.html")]
 pub struct CustomerMenu {
     pub ctx: Ctx,
+    pub can_sold_out: bool,
+    pub open: bool,
+    pub hours: String,
     pub error: Option<String>,
     pub token: String,
     pub table_label: String,
@@ -324,23 +391,75 @@ pub struct CustomerStatusPart {
     pub total: String,
 }
 
-pub fn group_menu(rows: Vec<MenuRow>) -> Vec<MenuCategoryView> {
-    let mut out: Vec<MenuCategoryView> = Vec::new();
-    for r in rows {
-        let item = MenuItemView {
-            id: r.id,
-            name: r.name,
-            price: r.price,
-            price_fmt: crate::money::rupiah(r.price),
-            available: r.available,
-        };
-        match out.last_mut() {
-            Some(c) if c.name == r.category => c.items.push(item),
-            _ => out.push(MenuCategoryView {
-                name: r.category,
-                items: vec![item],
-            }),
-        }
-    }
-    out
+#[derive(Template)]
+#[template(path = "wizard.html")]
+pub struct WizardPage {
+    pub ctx: Ctx,
+    pub error: Option<String>,
+    pub tax_pct: String,
+    pub s: SettingsRow,
+}
+
+pub struct DeviceView {
+    pub id: String,
+    pub name: String,
+    pub created: String,
+    pub last_seen: String,
+    pub revoked: bool,
+}
+
+#[derive(Template)]
+#[template(path = "owner_devices.html")]
+pub struct DevicesPage {
+    pub ctx: Ctx,
+    pub error: Option<String>,
+    pub notice: Option<String>,
+    pub devices: Vec<DeviceView>,
+    pub this_registered: bool,
+    pub required: bool,
+}
+
+pub struct ModView {
+    pub id: String,
+    pub name: String,
+    pub price_fmt: String,
+    pub price: i64,
+    pub active: bool,
+}
+
+pub struct GroupView {
+    pub id: String,
+    pub name: String,
+    pub required: bool,
+    pub max_select: i64,
+    pub mods: Vec<ModView>,
+}
+
+#[derive(Template)]
+#[template(path = "owner_modifiers.html")]
+pub struct ModifiersPage {
+    pub ctx: Ctx,
+    pub error: Option<String>,
+    pub item_id: String,
+    pub item_name: String,
+    pub groups: Vec<GroupView>,
+}
+
+pub struct HistRow {
+    pub id: String,
+    pub number: i64,
+    pub time: String,
+    pub where_label: String,
+    pub status_label: &'static str,
+    pub status_class: &'static str,
+    pub total: String,
+}
+
+#[derive(Template)]
+#[template(path = "history.html")]
+pub struct HistoryPage {
+    pub ctx: Ctx,
+    pub q: String,
+    pub day: String,
+    pub rows: Vec<HistRow>,
 }

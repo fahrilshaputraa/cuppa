@@ -26,13 +26,18 @@ pub async fn page(State(st): State<AppState>, staff: Staff) -> AppResult<Html<St
 
 pub async fn queue(State(st): State<AppState>, staff: Staff) -> AppResult<Html<String>> {
     staff.require(&[Role::Owner, Role::Cashier])?;
-    render(CashierQueue {
-        orders: orders::queue_orders(&st, &["pending", "confirmed", "ready"]).await?,
-    })
+    let orders = orders::queue_orders(&st, &["pending", "confirmed", "ready"]).await?;
+    let pending = orders.iter().filter(|o| o.status == "pending").count();
+    render(CashierQueue { orders, pending })
 }
 
 pub async fn kitchen_page(State(st): State<AppState>, staff: Staff) -> AppResult<Html<String>> {
     staff.require(&[Role::Owner, Role::Kitchen])?;
+    if !Ctx::guest(&st).await?.kitchen {
+        return Err(AppError::Invalid(
+            "Mode dapur belum diaktifkan. Nyalakan di Pengaturan → Alur dapur.".into(),
+        ));
+    }
     render(KitchenPage {
         ctx: Ctx::staff(&st, &staff, "kitchen").await?,
     })
@@ -46,18 +51,15 @@ pub async fn kitchen_tickets(State(st): State<AppState>, staff: Staff) -> AppRes
 }
 
 async fn new_page(st: &AppState, staff: &Staff, error: Option<String>) -> AppResult<Response> {
-    let rows: Vec<MenuRow> = sqlx::query_as(
-        "SELECT m.id, m.name, m.price, m.available, c.name AS category FROM menu_items m JOIN categories c ON c.id = m.category_id \
-         WHERE m.active = 1 AND c.active = 1 ORDER BY c.sort_order, c.name, m.name",
-    )
-    .fetch_all(&st.db).await?;
+    let menu = super::load_menu(st).await?;
     let tables: Vec<TableRow> = sqlx::query_as("SELECT id, label, active FROM tables WHERE active = 1 ORDER BY label")
         .fetch_all(&st.db)
         .await?;
     Ok(render(CashierNew {
         ctx: Ctx::staff(st, staff, "new").await?,
+        can_sold_out: staff.can(crate::auth::Perm::SoldOut),
         error,
-        menu: group_menu(rows),
+        menu,
         tables,
     })?
     .into_response())
@@ -119,14 +121,45 @@ async fn shift_page(
     error: Option<String>,
     report: Option<ZReport>,
 ) -> AppResult<Response> {
-    let open: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM shifts WHERE closed_at IS NULL)")
-        .fetch_one(&st.db)
+    let open_id: Option<String> = sqlx::query_scalar("SELECT id FROM shifts WHERE closed_at IS NULL")
+        .fetch_optional(&st.db)
         .await?;
+    let tz = st.cfg.tz_offset_hours;
+    let movements = match &open_id {
+        Some(id) => {
+            let rows: Vec<(i64, String, i64, String, String)> = sqlx::query_as(
+                "SELECT m.created_at, m.kind, m.amount, m.reason, u.name FROM cash_movements m JOIN users u ON u.id = m.user_id WHERE m.shift_id = ? ORDER BY m.created_at DESC",
+            )
+            .bind(id)
+            .fetch_all(&st.db)
+            .await?;
+            rows.into_iter()
+                .map(|(at, kind, amount, reason, who)| MoveView {
+                    time: clock::hm(at, tz),
+                    kind: match kind.as_str() {
+                        "in" => "Kas masuk",
+                        "out" => "Kas keluar",
+                        _ => "Buka laci",
+                    },
+                    amount: if kind == "open_drawer" {
+                        "—".into()
+                    } else {
+                        rupiah(amount)
+                    },
+                    reason,
+                    who,
+                })
+                .collect()
+        }
+        None => Vec::new(),
+    };
     Ok(render(ShiftPage {
         ctx: Ctx::staff(st, staff, "shift").await?,
         error,
-        open,
+        open: open_id.is_some(),
         report,
+        movements,
+        can_cash: staff.can(crate::auth::Perm::CashMove),
     })?
     .into_response())
 }
@@ -182,7 +215,17 @@ pub async fn shift_close(State(st): State<AppState>, staff: Staff, Form(f): Form
     let (id, opening) = row.ok_or_else(|| AppError::Invalid("Tidak ada shift terbuka.".into()))?;
     let cash: i64 = sqlx::query_scalar("SELECT COALESCE(SUM(p.amount),0) FROM payments p JOIN orders o ON o.id = p.order_id WHERE p.shift_id = ? AND p.method = 'cash' AND o.status = 'paid'")
         .bind(&id).fetch_one(&mut *tx).await?;
-    let expected = opening + cash;
+    let cash_in: i64 =
+        sqlx::query_scalar("SELECT COALESCE(SUM(amount),0) FROM cash_movements WHERE shift_id = ? AND kind = 'in'")
+            .bind(&id)
+            .fetch_one(&mut *tx)
+            .await?;
+    let cash_out: i64 =
+        sqlx::query_scalar("SELECT COALESCE(SUM(amount),0) FROM cash_movements WHERE shift_id = ? AND kind = 'out'")
+            .bind(&id)
+            .fetch_one(&mut *tx)
+            .await?;
+    let expected = opening + cash + cash_in - cash_out;
     let diff = f.counted - expected;
     sqlx::query("UPDATE shifts SET closed_at = ?, counted_cash = ?, expected_cash = ?, difference = ? WHERE id = ?")
         .bind(clock::now())
@@ -203,6 +246,8 @@ pub async fn shift_close(State(st): State<AppState>, staff: Staff, Form(f): Form
         expected: rupiah(expected),
         counted: rupiah(f.counted),
         difference: rupiah(diff),
+        cash_in: rupiah(cash_in),
+        cash_out: rupiah(cash_out),
     };
     shift_page(&st, &staff, None, Some(report)).await
 }

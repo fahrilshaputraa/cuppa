@@ -1,0 +1,24 @@
+[Unit]
+Description=Cuppa POS
+After=network.target
+
+[Service]
+User=cuppa
+WorkingDirectory=/opt/cuppa
+EnvironmentFile=/opt/cuppa/.env
+ExecStart=/opt/cuppa/cuppa
+Restart=always
+RestartSec=2
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/cuppa/data
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallFilter=@system-service
+
+[Install]
+WantedBy=multi-user.target

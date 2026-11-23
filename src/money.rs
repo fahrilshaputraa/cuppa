@@ -12,8 +12,11 @@ pub struct TaxRules {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Totals {
     pub subtotal: i64,
+    pub discount: i64,
     pub service: i64,
     pub tax: i64,
+    /// Cash rounding as its own line (never silent). Included in `total`.
+    pub rounding: i64,
     pub total: i64,
 }
 
@@ -22,35 +25,33 @@ fn mul_bp(amount: i64, bp: i64) -> i64 {
     (amount * bp + 5_000) / 10_000
 }
 
-pub fn compute(subtotal: i64, r: TaxRules) -> Totals {
-    let service = mul_bp(subtotal, r.service_bp);
-    if r.tax_inclusive {
+/// `subtotal` and `discount` are rupiah; `round_to` is 0 (off), 100, 500 or 1000.
+pub fn compute(subtotal: i64, discount: i64, r: TaxRules, round_to: i64) -> Totals {
+    let discount = discount.clamp(0, subtotal);
+    let net = subtotal - discount;
+    let service = mul_bp(net, r.service_bp);
+    let (tax, raw_total) = if r.tax_inclusive {
         // Prices already contain tax: extract it, never add it.
-        let gross = if r.service_in_tax_base {
-            subtotal + service
-        } else {
-            subtotal
-        };
+        let gross = if r.service_in_tax_base { net + service } else { net };
         let tax = gross - (gross * 10_000 + (10_000 + r.tax_bp) / 2) / (10_000 + r.tax_bp);
-        Totals {
-            subtotal,
-            service,
-            tax,
-            total: subtotal + service,
-        }
+        (tax, net + service)
     } else {
-        let base = if r.service_in_tax_base {
-            subtotal + service
-        } else {
-            subtotal
-        };
+        let base = if r.service_in_tax_base { net + service } else { net };
         let tax = mul_bp(base, r.tax_bp);
-        Totals {
-            subtotal,
-            service,
-            tax,
-            total: subtotal + service + tax,
-        }
+        (tax, net + service + tax)
+    };
+    let total = if round_to > 0 {
+        (raw_total + round_to / 2) / round_to * round_to
+    } else {
+        raw_total
+    };
+    Totals {
+        subtotal,
+        discount,
+        service,
+        tax,
+        rounding: total - raw_total,
+        total,
     }
 }
 
@@ -71,47 +72,47 @@ pub fn rupiah(n: i64) -> String {
 mod tests {
     use super::*;
 
+    fn rules(tax_bp: i64, service_bp: i64, inclusive: bool, in_base: bool) -> TaxRules {
+        TaxRules {
+            tax_bp,
+            service_bp,
+            tax_inclusive: inclusive,
+            service_in_tax_base: in_base,
+        }
+    }
+
     #[test]
     fn klikpajak_example() {
         // Exclusive prices, service 5% inside tax base, tax 10%: 80.000 -> 92.400.
-        let t = compute(
-            80_000,
-            TaxRules {
-                tax_bp: 1000,
-                service_bp: 500,
-                tax_inclusive: false,
-                service_in_tax_base: true,
-            },
-        );
+        let t = compute(80_000, 0, rules(1000, 500, false, true), 0);
         assert_eq!((t.service, t.tax, t.total), (4_000, 8_400, 92_400));
     }
 
     #[test]
     fn service_outside_base() {
-        let t = compute(
-            80_000,
-            TaxRules {
-                tax_bp: 1000,
-                service_bp: 500,
-                tax_inclusive: false,
-                service_in_tax_base: false,
-            },
-        );
+        let t = compute(80_000, 0, rules(1000, 500, false, false), 0);
         assert_eq!((t.service, t.tax, t.total), (4_000, 8_000, 92_000));
     }
 
     #[test]
     fn inclusive_does_not_add_tax() {
-        let t = compute(
-            110_000,
-            TaxRules {
-                tax_bp: 1000,
-                service_bp: 0,
-                tax_inclusive: true,
-                service_in_tax_base: true,
-            },
-        );
+        let t = compute(110_000, 0, rules(1000, 0, true, true), 0);
         assert_eq!((t.tax, t.total), (10_000, 110_000));
+    }
+
+    #[test]
+    fn discount_reduces_the_tax_base() {
+        let t = compute(100_000, 10_000, rules(1000, 0, false, true), 0);
+        assert_eq!((t.discount, t.tax, t.total), (10_000, 9_000, 99_000));
+        // A discount can never exceed the subtotal.
+        assert_eq!(compute(5_000, 9_999, rules(1000, 0, false, true), 0).total, 0);
+    }
+
+    #[test]
+    fn rounding_is_its_own_recorded_line() {
+        let t = compute(63_800 - 5_800, 0, rules(1000, 0, false, true), 500);
+        assert_eq!((t.total, t.rounding), (64_000, 200));
+        assert_eq!(compute(58_000, 0, rules(1000, 0, false, true), 0).rounding, 0);
     }
 
     #[test]

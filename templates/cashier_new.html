@@ -9,10 +9,7 @@
   {% for c in menu %}
     <h3>{{ c.name }}</h3>
     {% for i in c.items %}
-      <div class="menu-item {% if i.available == 0 %}soldout{% endif %}">
-        <div><strong>{{ i.name }}</strong><div class="price">{{ i.price_fmt }}</div></div>
-        <div class="stepper"><button class="btn step" type="button" data-step="-1" aria-label="Kurangi {{ i.name }}">−</button><input class="qty" type="number" min="0" max="99" value="0" name="qty_{{ i.id }}" data-price="{{ i.price }}" aria-label="Jumlah {{ i.name }}" inputmode="numeric" {% if i.available == 0 %}disabled{% endif %}><button class="btn step" type="button" data-step="1" aria-label="Tambah {{ i.name }}" {% if i.available == 0 %}disabled{% endif %}>+</button></div>
-      </div>
+      {% include "_item_row.html" %}
     {% endfor %}
   {% endfor %}
   </div>

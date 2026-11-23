@@ -47,11 +47,68 @@ impl Role {
     }
 }
 
+/// Fine-grained permissions. Role defaults can be granted/revoked per user (FR-31).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Perm {
+    Reports,
+    Discount,
+    Refund,
+    CashMove,
+    History,
+    SoldOut,
+}
+
+impl Perm {
+    pub const ALL: [Perm; 6] = [
+        Perm::Reports,
+        Perm::Discount,
+        Perm::Refund,
+        Perm::CashMove,
+        Perm::History,
+        Perm::SoldOut,
+    ];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Perm::Reports => "reports",
+            Perm::Discount => "discount",
+            Perm::Refund => "refund",
+            Perm::CashMove => "cash_move",
+            Perm::History => "history",
+            Perm::SoldOut => "sold_out",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Perm::Reports => "Lihat laporan",
+            Perm::Discount => "Beri diskon",
+            Perm::Refund => "Refund",
+            Perm::CashMove => "Kas masuk/keluar",
+            Perm::History => "Riwayat pesanan",
+            Perm::SoldOut => "Tandai menu habis",
+        }
+    }
+
+    pub fn from_key(k: &str) -> Option<Perm> {
+        Perm::ALL.into_iter().find(|p| p.key() == k)
+    }
+
+    pub fn default_for(self, role: Role) -> bool {
+        match role {
+            Role::Owner => true,
+            Role::Cashier => matches!(self, Perm::Discount | Perm::CashMove | Perm::History | Perm::SoldOut),
+            Role::Kitchen => matches!(self, Perm::SoldOut),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Staff {
     pub id: String,
     pub name: String,
     pub role: Role,
+    pub perms: Vec<Perm>,
 }
 
 impl Staff {
@@ -62,6 +119,14 @@ impl Staff {
         } else {
             Err(AppError::Forbidden)
         }
+    }
+
+    pub fn can(&self, p: Perm) -> bool {
+        self.perms.contains(&p)
+    }
+
+    pub fn need(&self, p: Perm) -> Result<(), AppError> {
+        if self.can(p) { Ok(()) } else { Err(AppError::Forbidden) }
     }
 }
 
@@ -151,6 +216,7 @@ pub async fn check_credentials(pool: &SqlitePool, name: &str, secret: &str) -> R
             id: u.id,
             name: u.name,
             role,
+            perms: Vec::new(),
         });
     }
     let fails = u.failed_attempts + 1;
@@ -235,7 +301,19 @@ impl FromRequestParts<AppState> for Staff {
         .await?;
         let (id, name, role) = row.ok_or(AppError::Login)?;
         let role = Role::parse(&role).ok_or(AppError::Login)?;
-        Ok(Staff { id, name, role })
+        let overrides: Vec<(String, i64)> =
+            sqlx::query_as("SELECT perm, allowed FROM user_permission_overrides WHERE user_id = ?")
+                .bind(&id)
+                .fetch_all(&st.db)
+                .await?;
+        let perms = Perm::ALL
+            .into_iter()
+            .filter(|p| match overrides.iter().find(|(k, _)| k == p.key()) {
+                Some((_, allowed)) => *allowed == 1,
+                None => p.default_for(role),
+            })
+            .collect();
+        Ok(Staff { id, name, role, perms })
     }
 }
 

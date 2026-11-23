@@ -11,9 +11,18 @@
   <div class="field"><label><input type="checkbox" name="tax_inclusive" value="1" {% if s.tax_inclusive == 1 %}checked{% endif %}> Harga menu sudah termasuk pajak</label></div>
   <div class="field"><label><input type="checkbox" name="service_in_tax_base" value="1" {% if s.service_in_tax_base == 1 %}checked{% endif %}> Service charge masuk dasar pajak</label></div>
   <div class="field"><label><input type="checkbox" name="qr_ordering" value="1" {% if s.qr_ordering == 1 %}checked{% endif %}> Pesanan QR aktif</label></div>
+  <h3>Alur &amp; operasional</h3>
+  <div class="field"><label><input type="checkbox" name="kitchen_mode" value="1" {% if s.kitchen_mode == 1 %}checked{% endif %}> Mode "Sampai dapur" (layar dapur &amp; tiket)</label></div>
+  <div class="field"><label><input type="checkbox" name="require_device" value="1" {% if s.require_device == 1 %}checked{% endif %}> PIN hanya di perangkat terdaftar</label></div>
+  <div class="row"><div class="field"><label for="of">Jam buka (HH:MM)</label><input id="of" name="open_from" value="{% if let Some(v) = s.open_from %}{{ v }}{% endif %}" placeholder="08:00" maxlength="5"></div>
+  <div class="field"><label for="ot">Jam tutup (HH:MM)</label><input id="ot" name="open_to" value="{% if let Some(v) = s.open_to %}{{ v }}{% endif %}" placeholder="22:00" maxlength="5"></div></div>
+  <div class="field"><label for="rt">Pembulatan total</label><select id="rt" name="round_to"><option value="0" {% if s.round_to == 0 %}selected{% endif %}>Tanpa pembulatan</option><option value="100" {% if s.round_to == 100 %}selected{% endif %}>Rp100</option><option value="500" {% if s.round_to == 500 %}selected{% endif %}>Rp500</option><option value="1000" {% if s.round_to == 1000 %}selected{% endif %}>Rp1.000</option></select></div>
+  <div class="field"><label for="dp">Batas diskon kasir tanpa persetujuan (%)</label><input id="dp" name="discount_pct" value="{{ discount_pct }}" inputmode="decimal"></div>
+  <div class="field"><label for="th">Warna halaman pelanggan</label><select id="th" name="theme"><option value="copper" {% if s.theme == "copper" %}selected{% endif %}>Tembaga</option><option value="green" {% if s.theme == "green" %}selected{% endif %}>Hijau</option><option value="blue" {% if s.theme == "blue" %}selected{% endif %}>Biru</option><option value="rose" {% if s.theme == "rose" %}selected{% endif %}>Mawar</option></select></div>
   <h3>Printer struk (opsional)</h3>
   <div class="field"><label for="ph">Alamat printer LAN</label><input id="ph" name="printer_host" value="{% if let Some(h) = s.printer_host %}{{ h }}{% endif %}" placeholder="192.168.1.50:9100" maxlength="40"></div>
   <div class="field"><label for="pc">Lebar kertas</label><select id="pc" name="paper_cols"><option value="32" {% if s.paper_cols == 32 %}selected{% endif %}>58 mm</option><option value="42" {% if s.paper_cols == 42 %}selected{% endif %}>80 mm (42 kolom)</option><option value="48" {% if s.paper_cols == 48 %}selected{% endif %}>80 mm (48 kolom)</option></select></div>
+  <div class="field"><label for="kp">Printer dapur / bar (tiket otomatis, opsional)</label><input id="kp" name="kitchen_printer_host" value="{% if let Some(h) = s.kitchen_printer_host %}{{ h }}{% endif %}" placeholder="192.168.1.51:9100" maxlength="40"></div>
   <div class="field"><label for="rf">Teks bawah struk</label><input id="rf" name="receipt_footer" value="{{ s.receipt_footer }}" maxlength="80"></div>
   <div class="field"><label><input type="checkbox" name="open_drawer_on_cash" value="1" {% if s.open_drawer_on_cash == 1 %}checked{% endif %}> Buka laci kas saat bayar tunai</label></div>
   <p class="muted">Perubahan hanya berlaku untuk pesanan baru.</p>
@@ -25,4 +34,5 @@
   {% if !backups.is_empty() %}<ul>{% for b in backups %}<li>{{ b }}</li>{% endfor %}</ul>{% endif %}
   <form method="post" action="/owner/backup"><button class="btn" type="submit">Unduh backup sekarang</button></form></div>
 </div>
+<p class="muted small">Cuppa v{{ version }}</p>
 {% endblock %}

@@ -21,8 +21,14 @@ fn owner(s: &Staff) -> AppResult<()> {
     s.require(&[Role::Owner])
 }
 
-pub async fn home(State(st): State<AppState>, staff: Staff) -> AppResult<Html<String>> {
+pub async fn home(State(st): State<AppState>, staff: Staff) -> AppResult<Response> {
     owner(&staff)?;
+    let done: i64 = sqlx::query_scalar("SELECT wizard_done FROM outlet_settings WHERE id = 1")
+        .fetch_one(&st.db)
+        .await?;
+    if done == 0 {
+        return Ok(Redirect::to("/owner/wizard").into_response());
+    }
     let day = clock::day(clock::now(), st.cfg.tz_offset_hours);
     let (sales, paid): (i64, i64) =
         sqlx::query_as("SELECT COALESCE(SUM(total),0), COUNT(*) FROM orders WHERE day = ? AND status = 'paid'")
@@ -36,13 +42,20 @@ pub async fn home(State(st): State<AppState>, staff: Staff) -> AppResult<Html<St
     let shift_open: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM shifts WHERE closed_at IS NULL)")
         .fetch_one(&st.db)
         .await?;
-    render(OwnerHome {
+    let refunds: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(r.amount),0) FROM refunds r JOIN orders o ON o.id = r.order_id WHERE o.day = ?",
+    )
+    .bind(&day)
+    .fetch_one(&st.db)
+    .await?;
+    Ok(render(OwnerHome {
         ctx: Ctx::staff(&st, &staff, "home").await?,
-        sales: rupiah(sales),
+        sales: rupiah(sales - refunds),
         paid_count: paid,
         void_count: voids,
         shift_open,
-    })
+    })?
+    .into_response())
 }
 
 async fn menu_page(st: &AppState, staff: &Staff, error: Option<String>) -> AppResult<Response> {
@@ -51,11 +64,13 @@ async fn menu_page(st: &AppState, staff: &Staff, error: Option<String>) -> AppRe
             .fetch_all(&st.db)
             .await?;
     let rows: Vec<ItemRow> = sqlx::query_as(
-        "SELECT m.id, m.name, c.name AS category, m.price, m.active, m.available FROM menu_items m JOIN categories c ON c.id = m.category_id ORDER BY c.name, m.name",
+        "SELECT m.id, m.name, c.name AS category, m.price, m.active, m.available, m.stock FROM menu_items m JOIN categories c ON c.id = m.category_id ORDER BY c.name, m.name",
     ).fetch_all(&st.db).await?;
     let items = rows
         .into_iter()
         .map(|r| ItemView {
+            stock: r.stock,
+            price: r.price,
             id: r.id,
             name: r.name,
             category: r.category,
@@ -269,9 +284,7 @@ pub async fn qr(State(st): State<AppState>, staff: Staff, Path(id): Path<String>
 // ---- Staff ----
 
 async fn staff_page(st: &AppState, staff: &Staff, error: Option<String>) -> AppResult<Response> {
-    let users: Vec<UserView> = sqlx::query_as("SELECT id, name, role, active FROM users ORDER BY name")
-        .fetch_all(&st.db)
-        .await?;
+    let users = super::extras::user_views(st).await?;
     Ok(render(OwnerStaff {
         ctx: Ctx::staff(st, staff, "staff").await?,
         error,
@@ -383,13 +396,23 @@ async fn settings_page(
         error,
         notice,
         backups,
+        version: env!("CARGO_PKG_VERSION"),
+        discount_pct: pct(s.cashier_discount_max_bp),
         tax_pct: pct(s.tax_bp),
         service_pct: pct(s.service_bp),
         s,
     })
 }
 
-fn pct_to_bp(s: &str) -> Option<i64> {
+pub fn pct_text(bp: i64) -> String {
+    if bp % 100 == 0 {
+        (bp / 100).to_string()
+    } else {
+        format!("{}.{:02}", bp / 100, bp % 100)
+    }
+}
+
+pub fn pct_to_bp(s: &str) -> Option<i64> {
     let s = s.trim().replace(',', ".");
     let (i, f) = s.split_once('.').unwrap_or((&s, ""));
     if f.len() > 2 || i.is_empty() || !i.bytes().all(|b| b.is_ascii_digit()) || !f.bytes().all(|b| b.is_ascii_digit()) {
@@ -411,6 +434,14 @@ pub struct SettingsForm {
     paper_cols: i64,
     receipt_footer: String,
     open_drawer_on_cash: Option<String>,
+    kitchen_mode: Option<String>,
+    kitchen_printer_host: Option<String>,
+    open_from: Option<String>,
+    open_to: Option<String>,
+    round_to: i64,
+    discount_pct: String,
+    theme: String,
+    require_device: Option<String>,
 }
 
 pub async fn save_settings(
@@ -441,7 +472,54 @@ pub async fn save_settings(
     if ![32, 42, 48].contains(&f.paper_cols) {
         return settings_page(&st, &staff, Some("Lebar kertas tidak valid.".into()), None).await;
     }
+    let kprinter = clean(f.kitchen_printer_host.as_deref().unwrap_or(""), 40);
+    if !kprinter.is_empty()
+        && let Err(e) = crate::escpos::parse_printer(&kprinter)
+    {
+        return settings_page(&st, &staff, Some(e), None).await;
+    }
+    let hm_ok = |v: &Option<String>| match v.as_deref().map(str::trim) {
+        None | Some("") => Some(None),
+        Some(x)
+            if x.len() == 5
+                && x.as_bytes()[2] == b':'
+                && x[..2].parse::<u8>().is_ok_and(|h| h < 24)
+                && x[3..].parse::<u8>().is_ok_and(|m| m < 60) =>
+        {
+            Some(Some(x.to_string()))
+        }
+        _ => None,
+    };
+    let (Some(open_from), Some(open_to)) = (hm_ok(&f.open_from), hm_ok(&f.open_to)) else {
+        return settings_page(&st, &staff, Some("Jam buka harus berformat HH:MM.".into()), None).await;
+    };
+    if open_from.is_some() != open_to.is_some() {
+        return settings_page(
+            &st,
+            &staff,
+            Some("Isi jam buka dan jam tutup, atau kosongkan keduanya.".into()),
+            None,
+        )
+        .await;
+    }
+    let Some(disc_bp) = pct_to_bp(&f.discount_pct) else {
+        return settings_page(&st, &staff, Some("Batas diskon kasir tidak valid.".into()), None).await;
+    };
+    if ![0, 100, 500, 1000].contains(&f.round_to) || !["copper", "green", "blue", "rose"].contains(&f.theme.as_str()) {
+        return settings_page(&st, &staff, Some("Pembulatan atau tema tidak valid.".into()), None).await;
+    }
     let mut tx = crate::db::begin_write(&st.db).await?;
+    sqlx::query("UPDATE outlet_settings SET kitchen_mode=?, kitchen_printer_host=?, open_from=?, open_to=?, round_to=?, cashier_discount_max_bp=?, theme=?, require_device=? WHERE id=1")
+        .bind(f.kitchen_mode.is_some() as i64)
+        .bind(if kprinter.is_empty() { None } else { Some(kprinter) })
+        .bind(open_from)
+        .bind(open_to)
+        .bind(f.round_to)
+        .bind(disc_bp)
+        .bind(&f.theme)
+        .bind(f.require_device.is_some() as i64)
+        .execute(&mut *tx)
+        .await?;
     sqlx::query("UPDATE outlet_settings SET outlet_name=?, tax_bp=?, service_bp=?, tax_inclusive=?, service_in_tax_base=?, qr_ordering=?, printer_host=?, paper_cols=?, receipt_footer=?, open_drawer_on_cash=? WHERE id=1")
         .bind(&name).bind(tax).bind(svc)
         .bind(f.tax_inclusive.is_some() as i64).bind(f.service_in_tax_base.is_some() as i64).bind(f.qr_ordering.is_some() as i64)

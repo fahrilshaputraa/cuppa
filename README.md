@@ -15,19 +15,25 @@ Small cafés lose money in three places: cash leakage (fake voids and discounts,
 
 ## Features (v0.1)
 
-- **Cashier** — live queue (QR + manual orders), confirm/reject, cash/QRIS/card/transfer, one-tap cash chips with live change, receipts (browser print or ESC/POS LAN printer + cash drawer), blind shift close with Z report.
-- **Customer QR ordering** — scan the table QR, no app, no login. Prices are always recomputed on the server.
-- **Owner** — menu & categories (never hard-deleted), tables + printable QR, tax/service settings, staff, sales/menu/method/cashier reports + CSV export, audit log, printer test, daily automatic backups + one-click download.
-- **Kitchen** — ticket screen with "ready" action.
-- **Money rules** — integer rupiah, price copied into order lines, paid orders locked by the database, void needs a *second owner's* credentials + reason.
-- **Realtime** — Server-Sent Events, no websockets, no JS framework (HTMX).
+- **First-run wizard** — pick the flow: QR ordering on/off × "cashier only" / "up to the kitchen", local tax rate, device lock.
+- **Customer QR ordering** — scan the table QR, no app, no login. Variants/toppings, live subtotal, open/closed hours. Prices are always recomputed on the server.
+- **Cashier** — live queue with new-order sound, confirm/reject, manual orders, item void, table move, discounts (owner approval above the cashier limit), cash/QRIS/card/transfer, quick-cash chips with live change, history & search, cash in/out, blind shift close with Z report.
+- **Refunds & voids** — partial/full refund documents and post-payment void, always with a reason and owner approval, fully audited.
+- **Receipts** — browser print or ESC/POS LAN printer, cash-drawer pulse, kitchen/bar ticket printing, test-print button.
+- **Owner** — menu (variants, stock, CSV import), tables + printable QR, staff with per-user permission overrides, registered devices, tax/service/rounding/hours/theme, reports (+CSV), audit log.
+- **Data safety** — daily rotating backups, one-click download, `cuppa verify-backup`, automatic snapshot before migrations, restore script.
+- **Money rules** — integer rupiah, price copied into order lines, rounding recorded as its own line, paid orders locked by the database.
+- **Realtime** — Server-Sent Events + HTMX, no JS framework.
+
+Full requirement-by-requirement status: [docs/PRD-COVERAGE.md](docs/PRD-COVERAGE.md).
 
 ## Security by default
 
 | Area | Measure |
 | --- | --- |
 | Secrets | Argon2id; lockout after 5 failures; constant-time-ish unknown-user path |
-| Sessions | Random 256-bit token, only its SHA-256 stored; `HttpOnly; SameSite=Strict` (+`Secure` over HTTPS) |
+| Sessions | Random 256-bit token, only its SHA-256 stored; `HttpOnly; SameSite=Strict` (+`Secure` over HTTPS); 12 h max, 10 min idle lock |
+| Devices | Cashier/kitchen PINs work only on devices the owner registered (revocable) |
 | First run | No default credentials. A one-time setup code is printed to the server log |
 | Network | Binds to `127.0.0.1` by default; rate limits; proxy headers trusted only if `CUPPA_TRUST_PROXY=true` |
 | Browser | Strict CSP (no inline script/style, no third-party origins), HSTS, frame denial, `no-store`, Origin-checked POSTs |
@@ -68,12 +74,11 @@ sqlx migrate add <name>         # new migration (never edit applied ones)
 cargo fmt && cargo clippy --all-targets -- -D warnings && cargo test
 ```
 
-Stack: Axum · SQLx (SQLite WAL) · Askama · HTMX · SSE. Design system: [DESIGN.md](DESIGN.md). Product docs: [PRD](docs/PRD.md), [Spec](docs/SPEC.md), [ADRs](docs/adr).
+Stack: Axum · SQLx (SQLite WAL) · Askama · HTMX · SSE. Design system: [DESIGN.md](DESIGN.md). Product docs: [PRD](docs/PRD.md), [coverage](docs/PRD-COVERAGE.md), [install guide](docs/INSTALL.md), [Spec](docs/SPEC.md), [ADRs](docs/adr).
 
 ## Roadmap
 
-Built: foundation, master data, QR ordering, payments, shifts, void with approval, audit, receipts + ESC/POS, reports + CSV, backups.
-Next (PRD order): item modifiers/variants, discounts with supervisor approval, per-user permission overrides, restore tooling, Postgres, split bill, payment gateway, stock & recipes, multi-branch, offline mode.
+Next: Postgres dialect, payment gateway (Midtrans/Xendit), split bill, ingredient stock & profit report, multi-branch, offline mode, photo upload, digital receipts. See the coverage table for details; real-printer verification is still pending.
 
 ## License
 

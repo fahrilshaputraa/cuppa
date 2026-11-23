@@ -110,6 +110,55 @@ pub fn auto_print(st: AppState, id: String) {
     });
 }
 
+/// Kitchen ticket to the kitchen/bar printer when "Sampai dapur" is on. Best effort.
+pub fn print_ticket(st: AppState, id: String) {
+    tokio::spawn(async move {
+        let Ok(mut c) = st.db.acquire().await else { return };
+        let Ok(s) = load_settings(&mut c).await else { return };
+        if s.kitchen_mode != 1 {
+            return;
+        }
+        let Some(addr) = s
+            .kitchen_printer_host
+            .as_deref()
+            .and_then(|p| escpos::parse_printer(p).ok())
+        else {
+            return;
+        };
+        let row: Option<(i64, i64, Option<String>, Option<String>)> =
+            sqlx::query_as("SELECT o.number, o.created_at, t.label, o.note FROM orders o LEFT JOIN tables t ON t.id = o.table_id WHERE o.id = ?").bind(&id).fetch_optional(&mut *c).await.ok().flatten();
+        let Some((number, at, label, note)) = row else { return };
+        let lines: Vec<(i64, String)> =
+            sqlx::query_as("SELECT qty, name FROM order_items WHERE order_id = ? AND voided = 0")
+                .bind(&id)
+                .fetch_all(&mut *c)
+                .await
+                .unwrap_or_default();
+        let lines: Vec<String> = lines.into_iter().map(|(q, n)| format!("{q}x {n}")).collect();
+        let data = escpos::ticket_bytes(
+            number,
+            &label.map(|l| format!("Meja {l}")).unwrap_or_else(|| "Antre".into()),
+            &clock::hm(at, st.cfg.tz_offset_hours),
+            &lines,
+            note.as_deref(),
+        );
+        if let Err(e) = escpos::send(addr, &data).await {
+            tracing::warn!(error = ?e, "kitchen ticket print failed");
+        }
+    });
+}
+
+/// Open the cash drawer without a sale. Best effort.
+pub fn pulse_drawer(st: AppState) {
+    tokio::spawn(async move {
+        let Ok(mut c) = st.db.acquire().await else { return };
+        let Ok(s) = load_settings(&mut c).await else { return };
+        if let Some(addr) = s.printer_host.as_deref().and_then(|p| escpos::parse_printer(p).ok()) {
+            let _ = escpos::send(addr, &escpos::drawer_pulse()).await;
+        }
+    });
+}
+
 pub async fn print(State(st): State<AppState>, staff: Staff, Path(id): Path<String>) -> AppResult<Redirect> {
     staff.require(&[Role::Owner, Role::Cashier])?;
     let d = load(&st, &id).await?;

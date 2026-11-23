@@ -12,6 +12,9 @@
 </form>
 <div class="panel"><table class="ledger"><thead><tr><th>Nama</th><th>Peran</th><th>Status</th><th></th></tr></thead><tbody>
 {% for u in users %}<tr><td>{{ u.name }}</td><td>{{ u.role }}</td><td>{% if u.active == 1 %}<span class="chip ok">Aktif</span>{% else %}<span class="chip neutral">Nonaktif</span>{% endif %}</td>
-<td><form method="post" action="/owner/staff/{{ u.id }}/active"><button class="btn" type="submit">{% if u.active == 1 %}Nonaktifkan{% else %}Aktifkan{% endif %}</button></form></td></tr>{% endfor %}
+<td class="row"><form method="post" action="/owner/staff/{{ u.id }}/active"><button class="btn" type="submit">{% if u.active == 1 %}Nonaktifkan{% else %}Aktifkan{% endif %}</button></form>
+{% if !u.is_owner %}<details class="inline"><summary class="btn">Izin</summary>
+<form method="post" action="/owner/staff/{{ u.id }}/perms">{% for p in u.perms %}<label class="opt"><input type="checkbox" name="perm_{{ p.0 }}" value="1" {% if p.2 %}checked{% endif %}> {{ p.1 }}</label>{% endfor %}<button class="btn primary" type="submit">Simpan izin</button></form></details>{% endif %}
+</td></tr>{% endfor %}
 </tbody></table></div>
 {% endblock %}

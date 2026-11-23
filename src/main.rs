@@ -10,6 +10,18 @@ async fn main() -> anyhow::Result<()> {
                 .unwrap_or_else(|_| "cuppa=info,tower_http=warn".into()),
         )
         .init();
+    // `cuppa verify-backup <file>`: integrity check + row counts, for the monthly restore test (FR-37).
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some("verify-backup") {
+        let path = args
+            .get(2)
+            .ok_or_else(|| anyhow::anyhow!("usage: cuppa verify-backup <file.db>"))?;
+        return cuppa::backup::verify(path).await;
+    }
+    if args.iter().any(|a| a == "--version" || a == "-V") {
+        println!("cuppa {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
     let cfg = Config::from_env()?;
     let bind = cfg.bind;
     let st = AppState::new(cfg).await?;

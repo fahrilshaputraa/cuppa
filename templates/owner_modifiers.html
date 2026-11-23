@@ -1,0 +1,24 @@
+{% extends "app.html" %}
+{% block title %}Varian {{ item_name }}{% endblock %}
+{% block body %}
+<h1>Varian &amp; tambahan · {{ item_name }}</h1>
+{% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
+<p><a href="/owner/menu">← Kembali ke menu</a></p>
+<form class="panel" method="post" action="/owner/items/{{ item_id }}/groups">
+  <h3>Grup baru</h3>
+  <div class="row"><div class="field"><label for="gn">Nama grup (mis. Ukuran, Topping)</label><input id="gn" name="name" required maxlength="40"></div>
+  <div class="field"><label for="gm">Maks. pilihan</label><input id="gm" name="max_select" type="number" min="1" max="10" value="1"></div></div>
+  <div class="field"><label><input type="checkbox" name="required" value="1"> Wajib dipilih pelanggan</label></div>
+  <button class="btn primary" type="submit">Tambah grup</button>
+</form>
+{% for g in groups %}
+<div class="panel"><h3>{{ g.name }} {% if g.required %}<span class="chip warn">wajib</span>{% endif %} <span class="muted small">maks. {{ g.max_select }}</span></h3>
+  <table class="ledger"><tbody>{% for m in g.mods %}<tr><td>{{ m.name }}</td><td class="num">{{ m.price_fmt }}</td><td>{% if m.active %}<span class="chip ok">Aktif</span>{% else %}<span class="chip neutral">Nonaktif</span>{% endif %}</td>
+  <td><form method="post" action="/owner/modifiers/{{ m.id }}/active"><button class="btn" type="submit">{% if m.active %}Nonaktifkan{% else %}Aktifkan{% endif %}</button></form></td></tr>{% endfor %}</tbody></table>
+  <form class="row" method="post" action="/owner/groups/{{ g.id }}/modifiers">
+    <div class="field"><label for="mn{{ g.id }}">Pilihan baru</label><input id="mn{{ g.id }}" name="name" required maxlength="40"></div>
+    <div class="field"><label for="mp{{ g.id }}">Harga tambahan (Rp)</label><input id="mp{{ g.id }}" name="price" type="number" min="0" value="0" inputmode="numeric"></div>
+    <button class="btn" type="submit">Tambah</button></form>
+</div>
+{% else %}<div class="panel empty"><strong>Belum ada grup</strong>Contoh: grup "Ukuran" dengan pilihan Regular dan Large (+Rp5.000).</div>{% endfor %}
+{% endblock %}

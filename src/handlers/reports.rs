@@ -3,7 +3,7 @@
 
 use crate::{
     AppState,
-    auth::{Role, Staff},
+    auth::{Perm, Staff},
     clock,
     error::{AppError, AppResult},
     money::rupiah,
@@ -96,7 +96,7 @@ fn method_label(m: String) -> String {
 }
 
 pub async fn page(State(st): State<AppState>, staff: Staff, Query(r): Query<Range>) -> AppResult<Html<String>> {
-    staff.require(&[Role::Owner])?;
+    staff.need(Perm::Reports)?;
     let (from, to) = resolve(&st, r)?;
     let (sales, orders): (i64, i64) = sqlx::query_as(
         "SELECT COALESCE(SUM(total),0), COUNT(*) FROM orders WHERE status='paid' AND day BETWEEN ? AND ?",
@@ -105,6 +105,8 @@ pub async fn page(State(st): State<AppState>, staff: Staff, Query(r): Query<Rang
     .bind(&to)
     .fetch_one(&st.db)
     .await?;
+    let refunds: i64 = sqlx::query_scalar("SELECT COALESCE(SUM(r.amount),0) FROM refunds r JOIN orders o ON o.id = r.order_id WHERE o.day BETWEEN ? AND ?").bind(&from).bind(&to).fetch_one(&st.db).await?;
+    let sales = sales - refunds;
     let (voids, void_amount): (i64, i64) = sqlx::query_as(
         "SELECT COUNT(*), COALESCE(SUM(total),0) FROM orders WHERE status='voided' AND day BETWEEN ? AND ?",
     )
@@ -167,7 +169,7 @@ fn csv_cell(s: &str) -> String {
 }
 
 pub async fn csv(State(st): State<AppState>, staff: Staff, Query(r): Query<Range>) -> AppResult<Response> {
-    staff.require(&[Role::Owner])?;
+    staff.need(Perm::Reports)?;
     let (from, to) = resolve(&st, r)?;
     let rows: Vec<(String, i64, String, String, i64, i64, i64, i64, String)> = sqlx::query_as(
         "SELECT o.day, o.number, o.source, o.status, o.subtotal, o.service, o.tax, o.total, COALESCE(p.method,'') \

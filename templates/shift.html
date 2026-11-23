@@ -8,12 +8,24 @@
   <table class="ledger"><tbody>
     <tr><td>Modal awal</td><td class="num">{{ r.opening }}</td></tr>
     <tr><td>Tunai diterima</td><td class="num">{{ r.cash_sales }}</td></tr>
+    <tr><td>Kas masuk</td><td class="num">{{ r.cash_in }}</td></tr>
+    <tr><td>Kas keluar</td><td class="num">{{ r.cash_out }}</td></tr>
     <tr><td>Seharusnya di laci</td><td class="num">{{ r.expected }}</td></tr>
     <tr><td>Dihitung fisik</td><td class="num">{{ r.counted }}</td></tr>
     <tr><td><strong>Selisih</strong></td><td class="num"><strong>{{ r.difference }}</strong></td></tr>
   </tbody></table></div>
 {% endif %}
 {% if open %}
+  {% if can_cash %}
+  <form class="panel" method="post" action="/cashier/shift/cash">
+    <h3>Kas masuk / keluar</h3>
+    <div class="row"><div class="field"><label for="ck">Jenis</label><select id="ck" name="kind"><option value="in">Kas masuk</option><option value="out">Kas keluar</option><option value="open_drawer">Buka laci (tanpa transaksi)</option></select></div>
+    <div class="field"><label for="ca">Nominal (Rp)</label><input id="ca" name="amount" type="number" min="0" inputmode="numeric"></div>
+    <div class="field"><label for="cr">Alasan</label><input id="cr" name="reason" required maxlength="120"></div></div>
+    <button class="btn" type="submit">Catat</button>
+  </form>
+  {% endif %}
+  {% if !movements.is_empty() %}<div class="panel"><h3>Pergerakan kas shift ini</h3><table class="ledger"><tbody>{% for m in movements %}<tr><td class="muted">{{ m.time }}</td><td>{{ m.kind }}</td><td>{{ m.reason }}</td><td class="muted">{{ m.who }}</td><td class="num">{{ m.amount }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
   <form class="panel" method="post" action="/cashier/shift/close">
     <h3>Tutup shift</h3>
     <p class="muted">Hitung uang fisik di laci dulu. Angka sistem ditampilkan setelah Anda mengirim hitungan.</p>

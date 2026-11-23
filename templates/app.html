@@ -7,19 +7,21 @@
       <div class="nav-label">Kelola</div>
       <a href="/owner" {% if ctx.nav == "home" %}aria-current="page"{% endif %}>Ringkasan</a>
       <a href="/owner/menu" {% if ctx.nav == "menu" %}aria-current="page"{% endif %}>Menu</a>
-      <a href="/owner/tables" {% if ctx.nav == "tables" %}aria-current="page"{% endif %}>Meja &amp; QR</a>
+      {% if ctx.qr %}<a href="/owner/tables" {% if ctx.nav == "tables" %}aria-current="page"{% endif %}>Meja &amp; QR</a>{% endif %}
+      <a href="/owner/devices" {% if ctx.nav == "devices" %}aria-current="page"{% endif %}>Perangkat</a>
       <a href="/owner/staff" {% if ctx.nav == "staff" %}aria-current="page"{% endif %}>Staf</a>
       <a href="/owner/settings" {% if ctx.nav == "settings" %}aria-current="page"{% endif %}>Pengaturan</a>
-      <a href="/owner/reports" {% if ctx.nav == "reports" %}aria-current="page"{% endif %}>Laporan</a>
+      {% if ctx.can_reports %}<a href="/owner/reports" {% if ctx.nav == "reports" %}aria-current="page"{% endif %}>Laporan</a>{% endif %}
       <a href="/owner/audit" {% if ctx.nav == "audit" %}aria-current="page"{% endif %}>Log audit</a>
     {% endif %}
     {% if ctx.role == "owner" || ctx.role == "cashier" %}
       <div class="nav-label">Kasir</div>
       <a href="/cashier" {% if ctx.nav == "cashier" %}aria-current="page"{% endif %}>Antrean</a>
       <a href="/cashier/new" {% if ctx.nav == "new" %}aria-current="page"{% endif %}>Pesanan baru</a>
+      <a href="/cashier/history" {% if ctx.nav == "history" %}aria-current="page"{% endif %}>Riwayat</a>
       <a href="/cashier/shift" {% if ctx.nav == "shift" %}aria-current="page"{% endif %}>Shift</a>
     {% endif %}
-    {% if ctx.role == "kitchen" || ctx.role == "owner" %}
+    {% if ctx.kitchen && (ctx.role == "kitchen" || ctx.role == "owner") %}
       <div class="nav-label">Dapur</div>
       <a href="/kitchen" {% if ctx.nav == "kitchen" %}aria-current="page"{% endif %}>Dapur</a>
     {% endif %}

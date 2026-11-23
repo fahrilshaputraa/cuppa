@@ -84,6 +84,14 @@ pub async fn login(
     }
     match auth::check_credentials(&st.db, &f.name, &f.secret).await {
         Ok(staff) => {
+            if staff.role != Role::Owner {
+                let required: i64 = sqlx::query_scalar("SELECT require_device FROM outlet_settings WHERE id = 1")
+                    .fetch_one(&st.db)
+                    .await?;
+                if required == 1 && !super::extras::device_ok(&st, &headers).await {
+                    return login_error(&st, "Perangkat ini belum terdaftar. Minta owner masuk di perangkat ini lalu daftarkan di menu Perangkat.").await;
+                }
+            }
             let token = auth::create_session(&st.db, &staff.id).await?;
             let mut c = st.db.acquire().await?;
             audit::record(

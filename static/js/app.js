@@ -6,13 +6,16 @@ function recalc(form) {
   let sum = 0, count = 0;
   form.querySelectorAll("input.qty").forEach((i) => {
     const q = parseInt(i.value || "0", 10) || 0;
-    sum += q * parseInt(i.dataset.price || "0", 10);
+    let unit = parseInt(i.dataset.price || "0", 10);
+    const row = i.closest(".menu-item");
+    if (row) row.querySelectorAll("input[data-price]:checked").forEach((m) => (unit += parseInt(m.dataset.price || "0", 10)));
+    sum += q * unit;
     count += q;
   });
   const out = form.querySelector("[data-cart-total]");
   if (out) out.textContent = count ? `${count} item · ${rp(sum)}` : "Belum ada item";
   const btn = form.querySelector("[data-cart-submit]");
-  if (btn) btn.disabled = count === 0;
+  if (btn) btn.disabled = count === 0 || "locked" in btn.dataset;
 }
 
 document.addEventListener("click", (e) => {
@@ -31,6 +34,11 @@ document.addEventListener("click", (e) => {
     const target = document.getElementById(chip.dataset.target);
     if (target) { target.value = chip.dataset.fill; target.dispatchEvent(new Event("input", { bubbles: true })); }
   }
+});
+
+document.addEventListener("change", (e) => {
+  const form = e.target instanceof Element ? e.target.closest("form[data-cart]") : null;
+  if (form) recalc(form);
 });
 
 document.addEventListener("input", (e) => {
@@ -63,4 +71,35 @@ document.addEventListener("change", (e) => {
   });
   const t = document.getElementById("t");
   if (t) t.required = cash;
+});
+
+// Idle screen lock (FR-33): after N seconds without touch/keys on a staff page, drop the session.
+(() => {
+  const secs = parseInt(document.body.dataset.idle || "0", 10);
+  if (!secs) return;
+  let t;
+  const arm = () => { clearTimeout(t); t = setTimeout(() => { location.href = "/lock"; }, secs * 1000); };
+  ["pointerdown", "keydown", "touchstart"].forEach((ev) => document.addEventListener(ev, arm, { passive: true }));
+  arm();
+})();
+
+// New-order sound (FR-08): beep when the pending count in the cashier queue goes up.
+let lastPending = null;
+function beep() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new Ctx();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = "sine"; o.frequency.value = 880; g.gain.value = 0.15;
+    o.connect(g); g.connect(ctx.destination); o.start();
+    setTimeout(() => { o.stop(); ctx.close(); }, 350);
+  } catch (_) { /* audio needs a user gesture first; ignore */ }
+}
+document.body.addEventListener("htmx:afterSwap", (e) => {
+  const marker = e.target && e.target.querySelector ? e.target.querySelector("[data-pending]") : null;
+  if (!marker) return;
+  const n = parseInt(marker.dataset.pending || "0", 10);
+  if (lastPending !== null && n > lastPending) beep();
+  lastPending = n;
 });

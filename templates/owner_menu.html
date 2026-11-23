@@ -22,13 +22,22 @@
   <div class="empty"><strong>Belum ada menu</strong>Tambah kategori lalu menu pertama di atas.</div>
 {% else %}
 <table class="ledger">
-  <thead><tr><th>Menu</th><th>Kategori</th><th class="num">Harga</th><th>Status</th><th></th></tr></thead>
+  <thead><tr><th>Menu</th><th>Kategori</th><th class="num">Harga</th><th class="num">Stok</th><th>Status</th><th></th></tr></thead>
   <tbody>
   {% for i in items %}
     <tr>
       <td>{{ i.name }}</td><td class="muted">{{ i.category }}</td><td class="num">{{ i.price_fmt }}</td>
+      <td class="num">{% if let Some(s) = i.stock %}{{ s }}{% else %}<span class="muted">—</span>{% endif %}</td>
       <td>{% if i.available == 0 %}<span class="chip warn">Habis</span>{% else if i.active == 0 %}<span class="chip neutral">Nonaktif</span>{% else %}<span class="chip ok">Tersedia</span>{% endif %}</td>
       <td class="row">
+        <details class="inline"><summary class="btn">Ubah</summary>
+          <form method="post" action="/owner/items/{{ i.id }}" class="row">
+            <input name="name" value="{{ i.name }}" required maxlength="80" aria-label="Nama">
+            <input name="price" type="number" min="0" value="{{ i.price }}" required inputmode="numeric" aria-label="Harga">
+            <input name="stock" type="number" min="0" value="{% if let Some(s) = i.stock %}{{ s }}{% endif %}" placeholder="Stok (opsional)" inputmode="numeric" aria-label="Stok">
+            <button class="btn primary" type="submit">Simpan</button>
+          </form></details>
+        <a class="btn" href="/owner/items/{{ i.id }}/modifiers">Varian</a>
         <form method="post" action="/owner/items/{{ i.id }}/available"><button class="btn" type="submit">{% if i.available == 0 %}Tersedia{% else %}Tandai habis{% endif %}</button></form>
         <form method="post" action="/owner/items/{{ i.id }}/active"><button class="btn" type="submit">{% if i.active == 0 %}Aktifkan{% else %}Nonaktifkan{% endif %}</button></form>
       </td>
@@ -38,4 +47,10 @@
 </table>
 {% endif %}
 </div>
+<details class="panel"><summary><strong>Impor dari CSV</strong></summary>
+  <form method="post" action="/owner/menu/import">
+    <p class="muted small">Satu baris per menu: <code>kategori,nama,harga[,stok]</code>. Menu yang sudah ada diperbarui harganya.</p>
+    <div class="field"><label for="csv">Data CSV</label><textarea id="csv" name="csv" rows="6" maxlength="60000" placeholder="Kopi,Americano,18000&#10;Kopi,Latte,25000,40"></textarea></div>
+    <button class="btn primary" type="submit">Impor</button>
+  </form></details>
 {% endblock %}

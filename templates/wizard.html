@@ -1,0 +1,19 @@
+{% extends "app.html" %}
+{% block title %}Atur alur kafe{% endblock %}
+{% block body %}
+<h1>Atur alur kafe Anda</h1>
+<p class="muted">Dua pilihan ini menentukan halaman yang tampil. Bisa diubah kapan saja di Pengaturan.</p>
+{% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
+<form method="post" action="/owner/wizard">
+  <div class="panel"><h3>1. Pesanan lewat QR di meja</h3>
+    <div class="field"><label><input type="radio" name="qr_ordering" value="1" {% if s.qr_ordering == 1 %}checked{% endif %}> Aktif — pelanggan scan QR dan pesan, kasir mengonfirmasi</label></div>
+    <div class="field"><label><input type="radio" name="qr_ordering" value="0" {% if s.qr_ordering == 0 %}checked{% endif %}> Mati — pelanggan langsung ke kasir dan dapat nomor antrean</label></div></div>
+  <div class="panel"><h3>2. Alur dapur</h3>
+    <div class="field"><label><input type="radio" name="kitchen_mode" value="0" {% if s.kitchen_mode == 0 %}checked{% endif %}> Kasir saja — struk diserahkan ke dapur secara manual (disarankan untuk kafe kecil)</label></div>
+    <div class="field"><label><input type="radio" name="kitchen_mode" value="1" {% if s.kitchen_mode == 1 %}checked{% endif %}> Sampai dapur — tiket dan layar dapur, tombol "siap"</label></div></div>
+  <div class="panel"><h3>3. Pajak &amp; keamanan</h3>
+    <div class="field"><label for="tax">Pajak (%) — sesuai perda daerah Anda</label><input id="tax" name="tax_pct" value="{{ tax_pct }}" required inputmode="decimal"></div>
+    <div class="field"><label><input type="checkbox" name="require_device" value="1" {% if s.require_device == 1 %}checked{% endif %}> PIN kasir/dapur hanya bisa dipakai di perangkat yang didaftarkan owner (disarankan)</label></div></div>
+  <button class="btn primary" type="submit">Simpan &amp; mulai</button>
+</form>
+{% endblock %}

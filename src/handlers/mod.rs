@@ -1,18 +1,27 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 pub mod cashier;
 pub mod customer;
+pub mod extras;
 pub mod orders;
 pub mod owner;
 pub mod receipt;
 pub mod reports;
 pub mod session;
 
-use crate::{error::AppError, money::TaxRules, views::SettingsRow};
+use crate::{
+    AppState,
+    error::AppError,
+    money::{TaxRules, rupiah},
+    views::{GroupView, MenuCategoryView, MenuItemView, MenuRow, ModView, SettingsRow},
+};
 use sqlx::SqliteConnection;
+use std::collections::HashMap;
 
 pub async fn load_settings(conn: &mut SqliteConnection) -> Result<SettingsRow, AppError> {
     Ok(sqlx::query_as(
-        "SELECT outlet_name, tax_bp, service_bp, tax_inclusive, service_in_tax_base, qr_ordering, confirm_timeout_min, printer_host, paper_cols, receipt_footer, open_drawer_on_cash FROM outlet_settings WHERE id = 1",
+        "SELECT outlet_name, tax_bp, service_bp, tax_inclusive, service_in_tax_base, qr_ordering, confirm_timeout_min, \
+         printer_host, paper_cols, receipt_footer, open_drawer_on_cash, kitchen_mode, wizard_done, open_from, open_to, \
+         round_to, cashier_discount_max_bp, theme, require_device, kitchen_printer_host FROM outlet_settings WHERE id = 1",
     )
     .fetch_one(conn)
     .await?)
@@ -27,32 +36,91 @@ pub fn rules(s: &SettingsRow) -> TaxRules {
     }
 }
 
-/// Collect `qty_<menu id>` fields into (menu_id, qty), ignoring zeros. Bounded to stop abuse.
-pub fn parse_qty(fields: Vec<(String, String)>, max_qty: i64) -> Result<Vec<(String, i64)>, AppError> {
-    let mut out = Vec::new();
-    for (k, v) in fields {
-        if let Some(id) = k.strip_prefix("qty_") {
-            let q: i64 = v
-                .trim()
-                .parse()
-                .map_err(|_| AppError::Invalid("Jumlah tidak valid.".into()))?;
-            if q < 0 || q > max_qty {
-                return Err(AppError::Invalid("Jumlah di luar batas.".into()));
-            }
-            if q > 0 {
-                if id.len() > 64 || out.len() >= 40 {
-                    return Err(AppError::Invalid("Terlalu banyak item.".into()));
-                }
-                out.push((id.to_string(), q));
-            }
-        }
-    }
-    if out.is_empty() {
-        return Err(AppError::Invalid("Pilih minimal satu menu.".into()));
-    }
-    Ok(out)
-}
-
 pub fn clean(s: &str, max: usize) -> String {
     s.trim().chars().filter(|c| !c.is_control()).take(max).collect()
+}
+
+/// Is the café open at `now`? Supports overnight ranges (e.g. 18:00–02:00). No hours set = always open.
+pub fn is_open(s: &SettingsRow, hm_now: &str) -> bool {
+    let (Some(from), Some(to)) = (s.open_from.as_deref(), s.open_to.as_deref()) else {
+        return true;
+    };
+    if from <= to {
+        hm_now >= from && hm_now < to
+    } else {
+        hm_now >= from || hm_now < to
+    }
+}
+
+pub fn hours_text(s: &SettingsRow) -> String {
+    match (&s.open_from, &s.open_to) {
+        (Some(a), Some(b)) => format!("{a}–{b}"),
+        _ => String::new(),
+    }
+}
+
+/// Active menu grouped by category, with modifier groups attached. Used by customer and cashier screens.
+pub async fn load_menu(st: &AppState) -> Result<Vec<MenuCategoryView>, AppError> {
+    let rows: Vec<MenuRow> = sqlx::query_as(
+        "SELECT m.id, m.name, m.price, m.available, m.stock, c.name AS category FROM menu_items m JOIN categories c ON c.id = m.category_id \
+         WHERE m.active = 1 AND c.active = 1 ORDER BY c.sort_order, c.name, m.name",
+    )
+    .fetch_all(&st.db)
+    .await?;
+    let groups: Vec<(String, String, String, i64, i64)> = sqlx::query_as(
+        "SELECT id, menu_id, name, required, max_select FROM modifier_groups ORDER BY required DESC, name",
+    )
+    .fetch_all(&st.db)
+    .await?;
+    let mods: Vec<(String, String, String, i64)> =
+        sqlx::query_as("SELECT id, group_id, name, price FROM modifiers WHERE active = 1 ORDER BY price, name")
+            .fetch_all(&st.db)
+            .await?;
+    let mut by_menu: HashMap<String, Vec<GroupView>> = HashMap::new();
+    for (gid, menu_id, name, required, max_select) in groups {
+        let mv: Vec<ModView> = mods
+            .iter()
+            .filter(|m| m.1 == gid)
+            .map(|m| ModView {
+                id: m.0.clone(),
+                name: m.2.clone(),
+                price_fmt: if m.3 > 0 {
+                    format!("+{}", rupiah(m.3))
+                } else {
+                    String::new()
+                },
+                price: m.3,
+                active: true,
+            })
+            .collect();
+        if !mv.is_empty() {
+            by_menu.entry(menu_id).or_default().push(GroupView {
+                id: gid,
+                name,
+                required: required == 1,
+                max_select,
+                mods: mv,
+            });
+        }
+    }
+    let mut out: Vec<MenuCategoryView> = Vec::new();
+    for r in rows {
+        let item = MenuItemView {
+            groups: by_menu.remove(&r.id).unwrap_or_default(),
+            stock: r.stock,
+            id: r.id,
+            name: r.name,
+            price: r.price,
+            price_fmt: rupiah(r.price),
+            available: r.available,
+        };
+        match out.last_mut() {
+            Some(c) if c.name == r.category => c.items.push(item),
+            _ => out.push(MenuCategoryView {
+                name: r.category,
+                items: vec![item],
+            }),
+        }
+    }
+    Ok(out)
 }

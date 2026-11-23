@@ -4,12 +4,11 @@
 //! and cashier confirmation before anything reaches the kitchen.
 
 use crate::{
-    AppState,
+    AppState, clock,
     error::{AppError, AppResult},
     handlers::{
-        clean,
-        orders::{self, NewOrder, create_order},
-        parse_qty,
+        clean, hours_text, is_open, load_settings,
+        orders::{self, NewOrder, create_order, parse_lines},
     },
     money::rupiah,
     views::*,
@@ -41,18 +40,27 @@ async fn table_by_token(st: &AppState, token: &str) -> AppResult<(String, String
         .ok_or(AppError::NotFound)
 }
 
+async fn open_state(st: &AppState) -> AppResult<(bool, String)> {
+    let mut c = st.db.acquire().await?;
+    let s = load_settings(&mut c).await?;
+    Ok((
+        is_open(&s, &clock::hm(clock::now(), st.cfg.tz_offset_hours)),
+        hours_text(&s),
+    ))
+}
+
 async fn menu_page(st: &AppState, token: &str, error: Option<String>) -> AppResult<Response> {
     let (_, label) = table_by_token(st, token).await?;
-    let rows: Vec<MenuRow> = sqlx::query_as(
-        "SELECT m.id, m.name, m.price, m.available, c.name AS category FROM menu_items m JOIN categories c ON c.id = m.category_id \
-         WHERE m.active = 1 AND c.active = 1 ORDER BY c.sort_order, c.name, m.name",
-    ).fetch_all(&st.db).await?;
+    let (open, hours) = open_state(st).await?;
     Ok(render(CustomerMenu {
         ctx: Ctx::guest(st).await?,
+        can_sold_out: false,
+        open,
+        hours,
         error,
         token: token.into(),
         table_label: label,
-        menu: group_menu(rows),
+        menu: super::load_menu(st).await?,
     })?
     .into_response())
 }
@@ -77,12 +85,20 @@ pub async fn submit(
         return Err(AppError::TooMany);
     }
     let (table_id, _) = table_by_token(&st, &token).await?;
+    if !open_state(&st).await?.0 {
+        return menu_page(
+            &st,
+            &token,
+            Some("Kafe sedang tutup, pesanan belum bisa dikirim.".into()),
+        )
+        .await;
+    }
     let note = fields
         .iter()
         .find(|(k, _)| k == "note")
         .map(|(_, v)| clean(v, 200))
         .filter(|v| !v.is_empty());
-    let items = match parse_qty(fields, 20) {
+    let items = match parse_lines(&fields, 20) {
         Ok(v) => v,
         Err(AppError::Invalid(m)) => return menu_page(&st, &token, Some(m)).await,
         Err(e) => return Err(e),

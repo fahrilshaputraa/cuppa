@@ -55,3 +55,25 @@ pub async fn daily(st: &AppState) -> anyhow::Result<()> {
     }
     Ok(())
 }
+
+/// Open a backup read-only, run SQLite's integrity check and print what it contains. Exit code != 0 on failure.
+pub async fn verify(path: &str) -> anyhow::Result<()> {
+    use sqlx::sqlite::SqliteConnectOptions;
+    use std::str::FromStr;
+    let opts = SqliteConnectOptions::from_str(&format!("sqlite://{path}"))?.read_only(true);
+    let pool = sqlx::SqlitePool::connect_with(opts).await?;
+    let check: String = sqlx::query_scalar("PRAGMA integrity_check").fetch_one(&pool).await?;
+    anyhow::ensure!(check == "ok", "integrity check failed: {check}");
+    let counts: (i64, i64, i64, i64, i64) = sqlx::query_as(
+        "SELECT (SELECT COUNT(*) FROM users), (SELECT COUNT(*) FROM menu_items), (SELECT COUNT(*) FROM orders), \
+         (SELECT COUNT(*) FROM payments), (SELECT COUNT(*) FROM audit_log)",
+    )
+    .fetch_one(&pool)
+    .await?;
+    println!(
+        "users: {}, menu items: {}, orders: {}, payments: {}, audit rows: {}",
+        counts.0, counts.1, counts.2, counts.3, counts.4
+    );
+    println!("OK: backup is readable and consistent");
+    Ok(())
+}

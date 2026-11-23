@@ -82,11 +82,49 @@ fn loc(r: &Res) -> String {
     r.headers.get(header::LOCATION).unwrap().to_str().unwrap().to_string()
 }
 
+async fn login_with(a: &App, name: &str, secret: &str, cookie: &str) -> Res {
+    send(
+        a,
+        "POST",
+        "/login",
+        Some(cookie),
+        Some(&format!("name={name}&secret={secret}")),
+        true,
+    )
+    .await
+}
+
+/// Owner registers "this device"; returns the device cookie.
+async fn register_device(a: &App, owner: &str) -> String {
+    let r = send(
+        a,
+        "POST",
+        "/owner/devices",
+        Some(owner),
+        Some("name=Tablet+kasir"),
+        true,
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.body);
+    cookie_of(&r)
+}
+
 async fn setup_owner(a: &App) -> String {
     let f = format!("code={}&outlet=Kopi+Test&name=Ana&secret=correct+horse+battery", a.code);
     let r = send(a, "POST", "/setup", None, Some(&f), true).await;
     assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.body);
-    cookie_of(&r)
+    let owner = cookie_of(&r);
+    let w = send(
+        a,
+        "POST",
+        "/owner/wizard",
+        Some(&owner),
+        Some("qr_ordering=1&kitchen_mode=0&tax_pct=10&require_device=1"),
+        true,
+    )
+    .await;
+    assert_eq!(w.status, StatusCode::SEE_OTHER, "{}", w.body);
+    owner
 }
 
 async fn login(a: &App, name: &str, secret: &str) -> Res {
@@ -135,7 +173,9 @@ async fn seed(a: &App, owner: &str) -> (String, String, String) {
         .fetch_one(&a.st.db)
         .await
         .unwrap();
-    let c = login(a, "Budi", "1234").await;
+    let dev = register_device(a, owner).await;
+    let c = login_with(a, "Budi", "1234", &dev).await;
+    assert_eq!(c.status, StatusCode::SEE_OTHER, "{}", c.body);
     (token, item, cookie_of(&c))
 }
 
@@ -496,7 +536,7 @@ async fn void_needs_a_different_owner_and_is_audited() {
         true,
     )
     .await;
-    assert!(selfv.body.contains("owner lain"));
+    assert!(selfv.body.contains("bukan kasir"));
     let ok = send(
         &a,
         "POST",
@@ -772,7 +812,7 @@ async fn receipt_reports_csv_and_backup() {
 async fn printer_must_be_on_the_lan_and_settings_validate() {
     let a = app().await;
     let owner = setup_owner(&a).await;
-    let base = "outlet_name=K&tax_pct=10&service_pct=5&paper_cols=32&receipt_footer=Thx";
+    let base = "outlet_name=K&tax_pct=10&service_pct=5&paper_cols=32&receipt_footer=Thx&round_to=0&discount_pct=10&theme=copper";
     let bad = send(
         &a,
         "POST",
@@ -823,7 +863,9 @@ async fn pages_have_no_inline_script_or_style() {
         "/cashier".into(),
         "/cashier/new".into(),
         "/cashier/shift".into(),
-        "/kitchen".into(),
+        "/cashier/history".into(),
+        "/owner/devices".into(),
+        "/owner/wizard".into(),
         format!("/orders/{oid}"),
         format!("/orders/{oid}/receipt"),
         format!("/m/{token}"),
@@ -875,4 +917,651 @@ async fn customer_cannot_see_other_tables_orders() {
             .status,
         StatusCode::OK
     );
+}
+
+// ---------------------------------------------------------------------------------------------
+// PRD core features
+// ---------------------------------------------------------------------------------------------
+
+async fn db_one<T: for<'r> sqlx::Decode<'r, sqlx::Sqlite> + sqlx::Type<sqlx::Sqlite> + Send + Unpin>(
+    a: &App,
+    sql: &'static str,
+) -> T {
+    sqlx::query_scalar(sql).fetch_one(&a.st.db).await.unwrap()
+}
+
+#[tokio::test]
+async fn pin_login_needs_a_registered_device_and_revocation_works() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    send(
+        &a,
+        "POST",
+        "/owner/staff",
+        Some(&owner),
+        Some("name=Budi&role=cashier&secret=1234"),
+        true,
+    )
+    .await;
+    // Unregistered browser: refused even with the right PIN.
+    let r = login(&a, "Budi", "1234").await;
+    assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+    assert!(r.body.contains("belum terdaftar"));
+    // Owner password works from anywhere.
+    assert_eq!(
+        login(&a, "Ana", "correct+horse+battery").await.status,
+        StatusCode::SEE_OTHER
+    );
+    let dev = register_device(&a, &owner).await;
+    assert_eq!(login_with(&a, "Budi", "1234", &dev).await.status, StatusCode::SEE_OTHER);
+    // Revoke -> PIN login from that device stops working.
+    let id: String = db_one(&a, "SELECT id FROM devices").await;
+    send(
+        &a,
+        "POST",
+        &format!("/owner/devices/{id}/revoke"),
+        Some(&owner),
+        Some(""),
+        true,
+    )
+    .await;
+    assert_eq!(
+        login_with(&a, "Budi", "1234", &dev).await.status,
+        StatusCode::UNAUTHORIZED
+    );
+}
+
+#[tokio::test]
+async fn modifiers_are_validated_priced_and_snapshotted() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let (token, item, cashier) = seed(&a, &owner).await;
+    send(
+        &a,
+        "POST",
+        &format!("/owner/items/{item}/groups"),
+        Some(&owner),
+        Some("name=Ukuran&max_select=1&required=1"),
+        true,
+    )
+    .await;
+    let gid: String = db_one(&a, "SELECT id FROM modifier_groups").await;
+    send(
+        &a,
+        "POST",
+        &format!("/owner/groups/{gid}/modifiers"),
+        Some(&owner),
+        Some("name=Regular&price=0"),
+        true,
+    )
+    .await;
+    send(
+        &a,
+        "POST",
+        &format!("/owner/groups/{gid}/modifiers"),
+        Some(&owner),
+        Some("name=Large&price=5000"),
+        true,
+    )
+    .await;
+    let large: String = sqlx::query_scalar("SELECT id FROM modifiers WHERE name='Large'")
+        .fetch_one(&a.st.db)
+        .await
+        .unwrap();
+
+    // Required group not chosen -> rejected, nothing created.
+    let r = send(
+        &a,
+        "POST",
+        &format!("/m/{token}/orders"),
+        None,
+        Some(&format!("qty_{item}=1")),
+        true,
+    )
+    .await;
+    assert!(r.body.contains("Pilih Ukuran"), "{}", r.body);
+    // A modifier id from nowhere -> rejected.
+    let r = send(
+        &a,
+        "POST",
+        &format!("/m/{token}/orders"),
+        None,
+        Some(&format!("qty_{item}=1&mod_{item}__{gid}=nope")),
+        true,
+    )
+    .await;
+    assert!(r.body.contains("tidak valid"));
+    // Valid: Latte 25.000 + Large 5.000 = 30.000 x2 = 60.000 + 10% tax.
+    let r = send(
+        &a,
+        "POST",
+        &format!("/m/{token}/orders"),
+        None,
+        Some(&format!("qty_{item}=2&mod_{item}__{gid}={large}")),
+        true,
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.body);
+    let (name, unit): (String, i64) = sqlx::query_as("SELECT name, unit_price FROM order_items")
+        .fetch_one(&a.st.db)
+        .await
+        .unwrap();
+    assert_eq!((name.as_str(), unit), ("Latte (Large)", 30_000));
+    assert_eq!(db_one::<i64>(&a, "SELECT total FROM orders").await, 66_000);
+    let _ = cashier;
+}
+
+#[tokio::test]
+async fn stock_decrements_blocks_oversell_and_is_restored_on_reject() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let (token, item, cashier) = seed(&a, &owner).await;
+    send(
+        &a,
+        "POST",
+        &format!("/owner/items/{item}"),
+        Some(&owner),
+        Some("name=Latte&price=25000&stock=3"),
+        true,
+    )
+    .await;
+    let ok = send(
+        &a,
+        "POST",
+        &format!("/m/{token}/orders"),
+        None,
+        Some(&format!("qty_{item}=2")),
+        true,
+    )
+    .await;
+    assert_eq!(ok.status, StatusCode::SEE_OTHER);
+    assert_eq!(db_one::<i64>(&a, "SELECT stock FROM menu_items").await, 1);
+    let over = send(
+        &a,
+        "POST",
+        &format!("/m/{token}/orders"),
+        None,
+        Some(&format!("qty_{item}=2")),
+        true,
+    )
+    .await;
+    assert!(over.body.contains("tinggal 1"), "{}", over.body);
+    // Reject gives the stock back.
+    let oid: String = db_one(&a, "SELECT id FROM orders").await;
+    send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/reject"),
+        Some(&cashier),
+        Some("reason=iseng"),
+        true,
+    )
+    .await;
+    assert_eq!(db_one::<i64>(&a, "SELECT stock FROM menu_items").await, 3);
+    // Selling the last units flips the item to sold-out automatically.
+    send(
+        &a,
+        "POST",
+        &format!("/m/{token}/orders"),
+        None,
+        Some(&format!("qty_{item}=3")),
+        true,
+    )
+    .await;
+    assert_eq!(db_one::<i64>(&a, "SELECT available FROM menu_items").await, 0);
+}
+
+async fn confirmed_order(a: &App, owner: &str, qty: i64) -> (String, String, String) {
+    let (token, item, cashier) = seed(a, owner).await;
+    send(
+        a,
+        "POST",
+        "/cashier/shift/open",
+        Some(&cashier),
+        Some("opening=100000"),
+        true,
+    )
+    .await;
+    send(
+        a,
+        "POST",
+        &format!("/m/{token}/orders"),
+        None,
+        Some(&format!("qty_{item}={qty}")),
+        true,
+    )
+    .await;
+    let oid: String = db_one(a, "SELECT id FROM orders").await;
+    send(
+        a,
+        "POST",
+        &format!("/orders/{oid}/confirm"),
+        Some(&cashier),
+        Some(""),
+        true,
+    )
+    .await;
+    (oid, cashier, item)
+}
+
+#[tokio::test]
+async fn discount_over_cashier_limit_needs_owner_approval() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let (oid, cashier, _) = confirmed_order(&a, &owner, 4).await; // 100.000 subtotal
+    // 5% is within the cashier limit (10%): no approval needed.
+    let r = send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/discount"),
+        Some(&cashier),
+        Some("mode=pct&value=5&reason=promo"),
+        true,
+    )
+    .await;
+    assert!(r.body.contains("Diskon diterapkan"), "{}", r.body);
+    assert_eq!(db_one::<i64>(&a, "SELECT discount FROM orders").await, 5_000);
+    // 50% needs approval; without it, refused and unchanged.
+    let r = send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/discount"),
+        Some(&cashier),
+        Some("mode=pct&value=50&reason=teman"),
+        true,
+    )
+    .await;
+    assert!(r.body.contains("di atas batas"), "{}", r.body);
+    assert_eq!(db_one::<i64>(&a, "SELECT discount FROM orders").await, 5_000);
+    // With the owner's credentials it goes through and the approver is audited.
+    let r = send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/discount"),
+        Some(&cashier),
+        Some("mode=pct&value=50&reason=teman&approver=Ana&secret=correct+horse+battery"),
+        true,
+    )
+    .await;
+    assert!(r.body.contains("Diskon diterapkan"), "{}", r.body);
+    assert_eq!(db_one::<i64>(&a, "SELECT discount FROM orders").await, 50_000);
+    // total = (100.000-50.000) * 1.10 = 55.000
+    assert_eq!(db_one::<i64>(&a, "SELECT total FROM orders").await, 55_000);
+    let approver: Option<String> =
+        sqlx::query_scalar("SELECT approver_id FROM audit_log WHERE action='order.discount' ORDER BY id DESC LIMIT 1")
+            .fetch_one(&a.st.db)
+            .await
+            .unwrap();
+    assert!(approver.is_some());
+}
+
+#[tokio::test]
+async fn item_void_recalculates_and_cancels_empty_orders() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let (oid, cashier, _) = confirmed_order(&a, &owner, 2).await;
+    let item_id: String = db_one(&a, "SELECT id FROM order_items").await;
+    let r = send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/items/{item_id}/void"),
+        Some(&cashier),
+        Some("reason="),
+        true,
+    )
+    .await;
+    assert!(r.body.contains("Alasan wajib"));
+    send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/items/{item_id}/void"),
+        Some(&cashier),
+        Some("reason=salah+pesan"),
+        true,
+    )
+    .await;
+    assert_eq!(db_one::<i64>(&a, "SELECT total FROM orders").await, 0);
+    assert_eq!(db_one::<String>(&a, "SELECT status FROM orders").await, "cancelled");
+}
+
+#[tokio::test]
+async fn refund_is_partial_capped_approved_and_reduces_the_drawer() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let (oid, cashier, _) = confirmed_order(&a, &owner, 2).await; // 55.000
+    send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/pay"),
+        Some(&cashier),
+        Some("method=cash&tendered=55000"),
+        true,
+    )
+    .await;
+    // Cashiers cannot refund by default...
+    let denied = send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/refund"),
+        Some(&cashier),
+        Some("amount=1000&reason=x&approver=Ana&secret=correct+horse+battery"),
+        true,
+    )
+    .await;
+    assert_eq!(denied.status, StatusCode::FORBIDDEN);
+    // ...until the owner grants the permission to this user.
+    let uid: String = db_one(&a, "SELECT id FROM users WHERE name='Budi'").await;
+    send(
+        &a,
+        "POST",
+        &format!("/owner/staff/{uid}/perms"),
+        Some(&owner),
+        Some("perm_refund=1&perm_discount=1&perm_cash_move=1&perm_history=1&perm_sold_out=1"),
+        true,
+    )
+    .await;
+    let bad = send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/refund"),
+        Some(&cashier),
+        Some("amount=10000&reason=x&approver=Ana&secret=wrong"),
+        true,
+    )
+    .await;
+    assert!(bad.body.contains("salah atau terkunci"));
+    let ok = send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/refund"),
+        Some(&cashier),
+        Some("amount=20000&reason=kopi+dingin&approver=Ana&secret=correct+horse+battery"),
+        true,
+    )
+    .await;
+    assert!(ok.body.contains("Refund dicatat"), "{}", ok.body);
+    let over = send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/refund"),
+        Some(&cashier),
+        Some("amount=40000&reason=x&approver=Ana&secret=correct+horse+battery"),
+        true,
+    )
+    .await;
+    assert!(over.body.contains("melebihi"));
+    // Refund documents are immutable, and the cash left the drawer.
+    assert!(
+        sqlx::query("UPDATE refunds SET amount = 1")
+            .execute(&a.st.db)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        db_one::<i64>(&a, "SELECT amount FROM cash_movements WHERE kind='out'").await,
+        20_000
+    );
+    // Blind close: expected = 100.000 + 55.000 - 20.000 = 135.000
+    let z = send(
+        &a,
+        "POST",
+        "/cashier/shift/close",
+        Some(&cashier),
+        Some("counted=135000"),
+        true,
+    )
+    .await;
+    assert!(z.body.contains("Rp135.000"), "{}", z.body);
+    // Net sales in the report subtract the refund.
+    let rep = send(&a, "GET", "/owner/reports", Some(&owner), None, false).await;
+    assert!(rep.body.contains("Rp35.000"), "{}", rep.body);
+}
+
+#[tokio::test]
+async fn cash_in_out_is_recorded_and_counted_in_the_drawer() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let (_, cashier, _) = confirmed_order(&a, &owner, 1).await;
+    let r = send(
+        &a,
+        "POST",
+        "/cashier/shift/cash",
+        Some(&cashier),
+        Some("kind=in&amount=50000&reason=tambah+receh"),
+        true,
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::SEE_OTHER);
+    let bad = send(
+        &a,
+        "POST",
+        "/cashier/shift/cash",
+        Some(&cashier),
+        Some("kind=out&amount=0&reason=x"),
+        true,
+    )
+    .await;
+    assert_eq!(bad.status, StatusCode::UNPROCESSABLE_ENTITY);
+    send(
+        &a,
+        "POST",
+        "/cashier/shift/cash",
+        Some(&cashier),
+        Some("kind=out&amount=10000&reason=beli+es"),
+        true,
+    )
+    .await;
+    let z = send(
+        &a,
+        "POST",
+        "/cashier/shift/close",
+        Some(&cashier),
+        Some("counted=140000"),
+        true,
+    )
+    .await;
+    // 100.000 + 50.000 - 10.000 = 140.000 -> no difference
+    assert!(z.body.contains("Rp140.000") && z.body.contains("Rp0"), "{}", z.body);
+}
+
+#[tokio::test]
+async fn permission_overrides_grant_and_revoke_per_user() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let (_, _, cashier) = (0, 0, seed(&a, &owner).await.2);
+    // Default: a cashier cannot see reports.
+    assert_eq!(
+        send(&a, "GET", "/owner/reports", Some(&cashier), None, false)
+            .await
+            .status,
+        StatusCode::FORBIDDEN
+    );
+    let uid: String = db_one(&a, "SELECT id FROM users WHERE name='Budi'").await;
+    // Grant reports, revoke history.
+    send(
+        &a,
+        "POST",
+        &format!("/owner/staff/{uid}/perms"),
+        Some(&owner),
+        Some("perm_reports=1&perm_discount=1&perm_cash_move=1&perm_sold_out=1"),
+        true,
+    )
+    .await;
+    assert_eq!(
+        send(&a, "GET", "/owner/reports", Some(&cashier), None, false)
+            .await
+            .status,
+        StatusCode::OK
+    );
+    assert_eq!(
+        send(&a, "GET", "/cashier/history", Some(&cashier), None, false)
+            .await
+            .status,
+        StatusCode::FORBIDDEN
+    );
+    // Overrides are stored only where they differ from the role default.
+    assert_eq!(
+        db_one::<i64>(&a, "SELECT COUNT(*) FROM user_permission_overrides").await,
+        2
+    );
+}
+
+#[tokio::test]
+async fn flow_modes_hours_rounding_and_history() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let (token, item, cashier) = seed(&a, &owner).await;
+    // Cashier-only flow hides the kitchen screen.
+    assert_eq!(
+        send(&a, "GET", "/kitchen", Some(&owner), None, false).await.status,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let base = "outlet_name=K&tax_pct=10&service_pct=0&paper_cols=32&receipt_footer=Thx&discount_pct=10&theme=copper&qr_ordering=1";
+    let ok = send(
+        &a,
+        "POST",
+        "/owner/settings",
+        Some(&owner),
+        Some(&format!(
+            "{base}&round_to=500&kitchen_mode=1&open_from=00:00&open_to=00:01"
+        )),
+        true,
+    )
+    .await;
+    assert!(ok.body.contains("Pengaturan disimpan"), "{}", ok.body);
+    assert_eq!(
+        send(&a, "GET", "/kitchen", Some(&owner), None, false).await.status,
+        StatusCode::OK
+    );
+    // Closed hours: customers see the banner and cannot order.
+    let page = send(&a, "GET", &format!("/m/{token}"), None, None, false).await;
+    assert!(page.body.contains("Kafe sedang tutup"));
+    let r = send(
+        &a,
+        "POST",
+        &format!("/m/{token}/orders"),
+        None,
+        Some(&format!("qty_{item}=1")),
+        true,
+    )
+    .await;
+    assert!(r.body.contains("sedang tutup"));
+    // Reopen, rounding to Rp500 is its own recorded line: 25.000 + 10% = 27.500 (already round) -> use 3 items 82.500 stays; check 1 item.
+    send(
+        &a,
+        "POST",
+        "/owner/settings",
+        Some(&owner),
+        Some(&format!("{base}&round_to=1000&open_from=&open_to=")),
+        true,
+    )
+    .await;
+    send(
+        &a,
+        "POST",
+        &format!("/m/{token}/orders"),
+        None,
+        Some(&format!("qty_{item}=1")),
+        true,
+    )
+    .await;
+    let (total, rounding): (i64, i64) = sqlx::query_as("SELECT total, rounding FROM orders")
+        .fetch_one(&a.st.db)
+        .await
+        .unwrap();
+    assert_eq!((total, rounding), (28_000, 500)); // 27.500 -> 28.000
+    // History search finds it by number and by table.
+    let h = send(&a, "GET", "/cashier/history?q=1", Some(&cashier), None, false).await;
+    assert!(h.body.contains("Rp28.000"));
+    let none = send(&a, "GET", "/cashier/history?q=zzz", Some(&cashier), None, false).await;
+    assert!(none.body.contains("Tidak ada pesanan"));
+}
+
+#[tokio::test]
+async fn csv_import_creates_and_updates_menu_safely() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let csv = "kategori,nama,harga,stok%0AKopi,Americano,18000%0AKopi,Latte,25000,40%0AMakanan,Roti,12000";
+    let r = send(
+        &a,
+        "POST",
+        "/owner/menu/import",
+        Some(&owner),
+        Some(&format!("csv={csv}")),
+        true,
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.body);
+    assert_eq!(db_one::<i64>(&a, "SELECT COUNT(*) FROM menu_items").await, 3);
+    // Re-import updates price instead of duplicating.
+    send(
+        &a,
+        "POST",
+        "/owner/menu/import",
+        Some(&owner),
+        Some("csv=Kopi,Americano,19000"),
+        true,
+    )
+    .await;
+    assert_eq!(db_one::<i64>(&a, "SELECT COUNT(*) FROM menu_items").await, 3);
+    assert_eq!(
+        db_one::<i64>(&a, "SELECT price FROM menu_items WHERE name='Americano'").await,
+        19_000
+    );
+    // Bad rows are rejected as a whole (atomic).
+    let bad = send(
+        &a,
+        "POST",
+        "/owner/menu/import",
+        Some(&owner),
+        Some("csv=Kopi,Mocha,30000%0AKopi,Broken,abc"),
+        true,
+    )
+    .await;
+    assert_eq!(bad.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(db_one::<i64>(&a, "SELECT COUNT(*) FROM menu_items").await, 3);
+}
+
+#[tokio::test]
+async fn move_table_and_sold_out_toggle_by_cashier() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let (oid, cashier, item) = confirmed_order(&a, &owner, 1).await;
+    send(&a, "POST", "/owner/tables", Some(&owner), Some("label=2"), true).await;
+    let t2: String = db_one(&a, "SELECT id FROM tables WHERE label='2'").await;
+    send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/move"),
+        Some(&cashier),
+        Some(&format!("table_id={t2}")),
+        true,
+    )
+    .await;
+    assert_eq!(db_one::<String>(&a, "SELECT table_id FROM orders").await, t2);
+    send(
+        &a,
+        "POST",
+        &format!("/menu/{item}/available"),
+        Some(&cashier),
+        Some(""),
+        true,
+    )
+    .await;
+    assert_eq!(db_one::<i64>(&a, "SELECT available FROM menu_items").await, 0);
+}
+
+#[tokio::test]
+async fn backup_verify_checks_integrity() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let b = send(&a, "POST", "/owner/backup", Some(&owner), Some(""), true).await;
+    let path = std::env::temp_dir().join(format!("verify-{}.db", cuppa::rand_id::id()));
+    std::fs::write(&path, b.body.as_bytes()).unwrap();
+    // `body` was lossy-decoded for text, so verify a fresh VACUUM INTO snapshot instead.
+    let snap = std::env::temp_dir().join(format!("snap-{}.db", cuppa::rand_id::id()));
+    cuppa::backup::snapshot(&a.st, &snap).await.unwrap();
+    cuppa::backup::verify(snap.to_str().unwrap()).await.unwrap();
+    std::fs::write(&path, b"not a database").unwrap();
+    assert!(cuppa::backup::verify(path.to_str().unwrap()).await.is_err());
 }

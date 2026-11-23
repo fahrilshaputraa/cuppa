@@ -1,18 +1,41 @@
 {% extends "app.html" %}
 {% block title %}Pesanan #{{ o.number }}{% endblock %}
 {% block body %}
-<h1>Pesanan #{{ o.number }} <span class="muted">· {{ where_label }}</span></h1>
+<h1>Pesanan #{{ o.number }} <span class="muted">· {{ where_label }}</span> <span class="chip {{ status_class }}">{{ status_label }}</span></h1>
 {% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
+{% if let Some(n) = notice %}<div class="notice" role="status">{{ n }}</div>{% endif %}
 <div class="grid cols-2">
+  <div>
   <div class="panel">
     <table class="ledger"><tbody>
-    {% for l in lines %}<tr><td>{{ l.qty }}× {{ l.name }}</td><td class="num">{{ l.line_fmt }}</td></tr>{% endfor %}
-    <tr><td class="muted">Subtotal</td><td class="num">{{ subtotal }}</td></tr>
-    <tr><td class="muted">Service</td><td class="num">{{ service }}</td></tr>
-    <tr><td class="muted">Pajak</td><td class="num">{{ tax }}</td></tr>
-    <tr><td><strong>Total</strong></td><td class="num"><strong>{{ total }}</strong></td></tr>
+    {% for l in lines %}
+      <tr class="{% if l.voided %}struck{% endif %}"><td>{{ l.qty }}× {{ l.name }}{% if l.voided %} <span class="chip danger">Batal</span> <span class="muted small">{{ l.void_reason }}</span>{% endif %}</td><td class="num">{{ l.line_fmt }}</td>
+      <td>{% if editable && !l.voided %}<details class="inline"><summary class="btn">Batalkan</summary><form method="post" action="/orders/{{ o.id }}/items/{{ l.id }}/void" class="row"><input name="reason" placeholder="Alasan" required maxlength="120" aria-label="Alasan membatalkan"><button class="btn danger" type="submit">Ya, batalkan</button></form></details>{% endif %}</td></tr>
+    {% endfor %}
+    <tr><td class="muted">Subtotal</td><td class="num">{{ subtotal }}</td><td></td></tr>
+    {% if has_discount %}<tr><td class="muted">Diskon</td><td class="num">−{{ discount }}</td><td></td></tr>{% endif %}
+    <tr><td class="muted">Service</td><td class="num">{{ service }}</td><td></td></tr>
+    <tr><td class="muted">Pajak</td><td class="num">{{ tax }}</td><td></td></tr>
+    {% if has_rounding %}<tr><td class="muted">Pembulatan</td><td class="num">{{ rounding }}</td><td></td></tr>{% endif %}
+    <tr><td><strong>Total</strong></td><td class="num"><strong>{{ total }}</strong></td><td></td></tr>
     </tbody></table>
-    <p><span class="chip {{ status_class }}">{{ status_label }}</span></p>
+  </div>
+  {% if can_discount %}
+  <details class="panel"><summary><strong>Diskon</strong> <span class="muted small">kasir maks. {{ discount_limit_pct }}% tanpa persetujuan</span></summary>
+    <form method="post" action="/orders/{{ o.id }}/discount">
+      <div class="row"><div class="field"><label for="dm">Jenis</label><select id="dm" name="mode"><option value="pct">Persen (%)</option><option value="rp">Rupiah</option></select></div>
+      <div class="field"><label for="dv">Nilai</label><input id="dv" name="value" type="number" min="0" required inputmode="numeric"></div></div>
+      <div class="field"><label for="dr">Alasan</label><input id="dr" name="reason" required maxlength="120"></div>
+      <p class="muted small">Di atas batas kasir, isi nama &amp; kata sandi owner:</p>
+      <div class="row"><div class="field"><label for="da">Nama owner</label><input id="da" name="approver" maxlength="60" autocomplete="off"></div>
+      <div class="field"><label for="ds">Kata sandi</label><input id="ds" name="secret" type="password" maxlength="128" autocomplete="off"></div></div>
+      <button class="btn" type="submit">Terapkan diskon</button>
+    </form></details>
+  {% endif %}
+  {% if editable %}
+  <details class="panel"><summary><strong>Pindah meja</strong></summary>
+    <form method="post" action="/orders/{{ o.id }}/move" class="row"><select name="table_id" aria-label="Meja tujuan"><option value="">Bawa pulang / antre</option>{% for t in tables %}<option value="{{ t.id }}">Meja {{ t.label }}</option>{% endfor %}</select><button class="btn" type="submit">Pindahkan</button></form></details>
+  {% endif %}
   </div>
   <div class="panel">
   {% if o.status == "confirmed" || o.status == "ready" %}
@@ -26,17 +49,30 @@
       <div class="field" data-for="noncash" hidden><label for="r">Nomor referensi (approval / ID transaksi)</label><input id="r" name="reference" maxlength="60" autocomplete="off"></div>
       <button class="btn primary" type="submit">Terima pembayaran</button>
     </form>{% endif %}
+  {% else if o.status == "pending" %}
+    <p class="muted">Menunggu konfirmasi kasir. <a href="/cashier">Kembali ke antrean</a></p>
   {% else if o.status == "paid" %}
     <h3>Lunas</h3>
     <p><a class="btn" href="/orders/{{ o.id }}/receipt">Lihat / cetak struk</a></p>
-    <p class="muted">Pesanan terkunci. Koreksi hanya lewat void dengan persetujuan owner.</p>
-    {% if !void_denied %}
+    <p class="muted">Pesanan terkunci. Koreksi hanya lewat refund atau void dengan persetujuan owner.</p>
+    {% if !refunds.is_empty() %}<table class="ledger"><tbody>{% for r in refunds %}<tr><td class="muted">{{ r.0 }}</td><td>Refund · {{ r.2 }}</td><td class="num">−{{ r.1 }}</td></tr>{% endfor %}</tbody></table>{% endif %}
+    {% if can_refund && refund_left > 0 %}
+    <details class="panel"><summary><strong>Refund</strong> <span class="muted small">sisa {{ refund_left }}</span></summary>
+      <form method="post" action="/orders/{{ o.id }}/refund">
+        <div class="field"><label for="ra">Nominal (Rp)</label><input id="ra" name="amount" type="number" min="1" max="{{ refund_left }}" value="{{ refund_left }}" required inputmode="numeric"></div>
+        <div class="field"><label for="rr">Alasan</label><input id="rr" name="reason" required maxlength="160"></div>
+        <div class="row"><div class="field"><label for="rn">Nama owner penyetuju</label><input id="rn" name="approver" required maxlength="60" autocomplete="off"></div>
+        <div class="field"><label for="rs">Kata sandi owner</label><input id="rs" name="secret" type="password" required maxlength="128" autocomplete="off"></div></div>
+        <button class="btn danger" type="submit">Catat refund</button>
+      </form></details>
+    {% endif %}
+    <details class="panel"><summary><strong>Void seluruh pesanan</strong></summary>
     <form method="post" action="/orders/{{ o.id }}/void">
       <div class="field"><label for="vr">Alasan void</label><input id="vr" name="reason" required maxlength="160"></div>
-      <div class="field"><label for="vn">Nama owner penyetuju</label><input id="vn" name="approver" required maxlength="60"></div>
-      <div class="field"><label for="vs">Kata sandi owner</label><input id="vs" name="secret" type="password" required maxlength="128" autocomplete="off"></div>
+      <div class="row"><div class="field"><label for="vn">Nama owner penyetuju</label><input id="vn" name="approver" required maxlength="60" autocomplete="off"></div>
+      <div class="field"><label for="vs">Kata sandi owner</label><input id="vs" name="secret" type="password" required maxlength="128" autocomplete="off"></div></div>
       <button class="btn danger" type="submit">Void</button>
-    </form>{% endif %}
+    </form></details>
   {% else %}
     <p class="muted">Tidak ada tindakan.</p>
   {% endif %}

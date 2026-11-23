@@ -24,7 +24,7 @@ use axum::{
     routing::{get, post},
 };
 use futures_util::Stream;
-use handlers::{cashier, customer, orders, owner, receipt, reports, session};
+use handlers::{cashier, customer, extras, orders, owner, receipt, reports, session};
 use sqlx::SqlitePool;
 use std::{
     convert::Infallible,
@@ -98,6 +98,24 @@ pub fn router(st: AppState) -> Router {
         .route("/owner/staff/{id}/active", post(owner::toggle_staff))
         .route("/owner/settings", get(owner::settings).post(owner::save_settings))
         .route("/owner/audit", get(owner::audit_view))
+        .route("/lock", get(extras::lock))
+        .route("/owner/wizard", get(extras::wizard_get).post(extras::wizard_post))
+        .route("/owner/devices", get(extras::devices_get).post(extras::devices_add))
+        .route("/owner/devices/{id}/revoke", post(extras::devices_revoke))
+        .route("/owner/items/{id}", post(extras::item_edit))
+        .route("/owner/items/{id}/modifiers", get(extras::modifiers_get))
+        .route("/owner/items/{id}/groups", post(extras::group_add))
+        .route("/owner/groups/{id}/modifiers", post(extras::modifier_add))
+        .route("/owner/modifiers/{id}/active", post(extras::modifier_toggle))
+        .route("/owner/menu/import", post(extras::menu_import))
+        .route("/owner/staff/{id}/perms", post(extras::perms_save))
+        .route("/menu/{id}/available", post(extras::sold_out))
+        .route("/cashier/history", get(extras::history))
+        .route("/cashier/shift/cash", post(extras::cash_move))
+        .route("/orders/{id}/discount", post(orders::discount))
+        .route("/orders/{id}/items/{item}/void", post(orders::void_item))
+        .route("/orders/{id}/move", post(orders::move_table))
+        .route("/orders/{id}/refund", post(orders::refund))
         .route("/owner/reports", get(reports::page))
         .route("/owner/reports.csv", get(reports::csv))
         .route("/owner/backup", post(owner::backup_download))
@@ -142,13 +160,7 @@ pub fn spawn_housekeeping(st: AppState) {
         let mut tick = tokio::time::interval(Duration::from_secs(30));
         loop {
             tick.tick().await;
-            let r = sqlx::query(
-                "UPDATE orders SET status='cancelled', cancel_reason='Tidak dikonfirmasi tepat waktu' WHERE status='pending' \
-                 AND created_at < ? - (SELECT confirm_timeout_min FROM outlet_settings WHERE id=1) * 60",
-            )
-            .bind(clock::now())
-            .execute(&st.db)
-            .await;
+            let r = expire_pending(&st).await;
             match r {
                 Ok(r) if r.rows_affected() > 0 => orders::notify(&st),
                 Err(e) => tracing::warn!(error = ?e, "housekeeping failed"),
@@ -164,4 +176,26 @@ pub fn spawn_housekeeping(st: AppState) {
                 .await;
         }
     });
+}
+
+/// Cancel unconfirmed QR orders past the timeout and give their stock back, atomically.
+async fn expire_pending(st: &AppState) -> sqlx::Result<sqlx::sqlite::SqliteQueryResult> {
+    let mut tx = db::begin_write(&st.db).await?;
+    let ids: Vec<String> = sqlx::query_scalar(
+        "SELECT id FROM orders WHERE status='pending' AND created_at < ? - (SELECT confirm_timeout_min FROM outlet_settings WHERE id=1) * 60",
+    )
+    .bind(clock::now())
+    .fetch_all(&mut *tx)
+    .await?;
+    let mut total = None;
+    for id in &ids {
+        orders::restore_stock(&mut tx, id).await?;
+        let r = sqlx::query("UPDATE orders SET status='cancelled', cancel_reason='Tidak dikonfirmasi tepat waktu' WHERE id = ? AND status='pending'").bind(id).execute(&mut *tx).await?;
+        total = Some(r);
+    }
+    tx.commit().await?;
+    match total {
+        Some(r) => Ok(r),
+        None => sqlx::query("SELECT 1 WHERE 0").execute(&st.db).await,
+    }
 }

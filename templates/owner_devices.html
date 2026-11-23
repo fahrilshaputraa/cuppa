@@ -1,0 +1,20 @@
+{% extends "app.html" %}
+{% block title %}Perangkat{% endblock %}
+{% block body %}
+<h1>Perangkat terdaftar</h1>
+{% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
+{% if let Some(n) = notice %}<div class="notice" role="status">{{ n }}</div>{% endif %}
+<p class="muted">{% if required %}Kasir dan dapur hanya bisa masuk dengan PIN di perangkat yang terdaftar. Owner bisa masuk dari mana saja dengan kata sandi.{% else %}Pembatasan perangkat sedang mati (Pengaturan).{% endif %}</p>
+<form class="panel row" method="post" action="/owner/devices">
+  <div class="field"><label for="n">Daftarkan perangkat ini</label><input id="n" name="name" required maxlength="40" placeholder="Tablet kasir"></div>
+  <button class="btn primary" type="submit">{% if this_registered %}Daftarkan ulang{% else %}Daftarkan{% endif %}</button>
+  {% if this_registered %}<span class="chip ok">Perangkat ini sudah terdaftar</span>{% endif %}
+</form>
+<div class="panel">
+{% if devices.is_empty() %}<div class="empty"><strong>Belum ada perangkat</strong>Masuk sebagai owner di tablet kasir, lalu daftarkan di sini.</div>{% else %}
+<table class="ledger"><thead><tr><th>Nama</th><th>Didaftarkan</th><th>Terakhir dipakai</th><th>Status</th><th></th></tr></thead><tbody>
+{% for d in devices %}<tr><td>{{ d.name }}</td><td class="muted">{{ d.created }}</td><td class="muted">{{ d.last_seen }}</td><td>{% if d.revoked %}<span class="chip danger">Dicabut</span>{% else %}<span class="chip ok">Aktif</span>{% endif %}</td>
+<td>{% if !d.revoked %}<form method="post" action="/owner/devices/{{ d.id }}/revoke"><button class="btn danger" type="submit">Cabut</button></form>{% endif %}</td></tr>{% endfor %}
+</tbody></table>{% endif %}
+</div>
+{% endblock %}
