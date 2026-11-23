@@ -204,6 +204,8 @@ pub struct SettingsRow {
     pub theme: String,
     pub require_device: i64,
     pub kitchen_printer_host: Option<String>,
+    pub busy_threshold: i64,
+    pub busy_extra_min: i64,
 }
 
 #[derive(Template)]
@@ -359,6 +361,7 @@ pub struct OrderDetail {
     pub tables: Vec<TableRow>,
     pub refunded: String,
     pub refund_left: i64,
+    pub merge_options: Vec<(String, String)>,
     pub paid_lines: Vec<(String, String)>,
     pub remaining: i64,
     pub remaining_fmt: String,
@@ -399,6 +402,7 @@ pub struct ShiftPage {
 #[template(path = "customer_menu.html")]
 pub struct CustomerMenu {
     pub ctx: Ctx,
+    pub busy: Option<String>,
     pub can_sold_out: bool,
     pub open: bool,
     pub hours: String,
@@ -426,6 +430,7 @@ pub struct CustomerStatusPart {
     pub id: String,
     pub receipt: Option<String>,
     pub can_join: bool,
+    pub rate_items: Vec<(String, String)>,
     pub class: &'static str,
     pub label: &'static str,
     pub hint: &'static str,
@@ -633,4 +638,74 @@ pub struct SecurityPage {
     pub enabled: bool,
     pub setup_qr: String,
     pub setup_key: String,
+}
+
+pub struct IngredientView {
+    pub id: String,
+    pub name: String,
+    pub unit: String,
+    pub stock: i64,
+    pub cost: String,
+    pub low: bool,
+    pub active: bool,
+}
+
+#[derive(Template)]
+#[template(path = "owner_ingredients.html")]
+pub struct IngredientsPage {
+    pub ctx: Ctx,
+    pub error: Option<String>,
+    pub notice: Option<String>,
+    pub ingredients: Vec<IngredientView>,
+    pub value: String,
+}
+
+#[derive(Template)]
+#[template(path = "owner_recipe.html")]
+pub struct RecipePage {
+    pub ctx: Ctx,
+    pub error: Option<String>,
+    pub menu_id: String,
+    pub menu_name: String,
+    pub lines: Vec<(String, String, String, i64, String)>,
+    pub total: String,
+    pub options: Vec<(String, String, String)>,
+}
+
+pub struct FloorTile {
+    pub label: String,
+    pub count: i64,
+    pub total: String,
+    pub call: bool,
+    pub link: String,
+}
+
+#[derive(Template)]
+#[template(path = "floor.html")]
+pub struct FloorPage {
+    pub ctx: Ctx,
+    pub tiles: Vec<FloorTile>,
+}
+
+#[derive(Template)]
+#[template(path = "owner_api.html")]
+pub struct ApiKeysPage {
+    pub ctx: Ctx,
+    pub error: Option<String>,
+    pub new_key: Option<String>,
+    pub base: String,
+    pub keys: Vec<(String, String, String, String, bool)>,
+}
+
+#[derive(Template)]
+#[template(path = "owner_ledger.html")]
+pub struct LedgerPage {
+    pub ctx: Ctx,
+    pub from: String,
+    pub to: String,
+    pub lines: Vec<(String, String, String)>,
+    pub debit: String,
+    pub credit: String,
+    pub balanced: bool,
+    pub expenses: String,
 }

@@ -21,6 +21,7 @@ Small cafés lose money in three places: cash leakage (fake voids and discounts,
 - **Refunds & voids** — partial/full refund documents and post-payment void, always with a reason and owner approval, fully audited.
 - **Receipts** — browser print or ESC/POS LAN printer, cash-drawer pulse, kitchen/bar ticket printing, test-print button.
 - **Owner** — menu (photos, variants, stock, cost, CSV import), kitchen/bar stations, reservations, opt-in loyalty customers, 2FA, tables + printable QR, staff with per-user permission overrides, registered devices, tax/service/rounding/hours/theme, reports (+CSV), audit log.
+- **Back-office** — ingredients, recipes and stock movements with actual cost, expenses, profit, ledger and journal exports, read-only API keys, floor plan, order merge.
 - **Data safety** — daily rotating backups, one-click download, `cuppa verify-backup`, automatic snapshot before migrations, restore script.
 - **Money rules** — integer rupiah, price copied into order lines, rounding recorded as its own line, paid orders locked by the database.
 - **Realtime** — Server-Sent Events + HTMX, no JS framework.

@@ -1,0 +1,18 @@
+{% extends "app.html" %}
+{% block title %}Buku besar{% endblock %}
+{% block body %}
+<div class="page-head"><h1>Buku besar</h1></div>
+<form class="toolbar" method="get" action="/owner/ledger">
+  <div class="field"><label for="from">Dari</label><input id="from" type="date" name="from" value="{{ from }}"></div>
+  <div class="field"><label for="to">Sampai</label><input id="to" type="date" name="to" value="{{ to }}"></div>
+  <button class="btn primary" type="submit">Tampilkan</button>
+  <a class="btn" href="/owner/reports/journal.csv?from={{ from }}&amp;to={{ to }}">Jurnal (CSV)</a>
+</form>
+<div class="panel">
+<table class="ledger"><thead><tr><th>Akun</th><th class="num">Debit</th><th class="num">Kredit</th></tr></thead><tbody>
+{% for l in lines %}<tr><td>{{ l.0 }}</td><td class="num">{{ l.1 }}</td><td class="num">{{ l.2 }}</td></tr>{% endfor %}
+<tr><td><strong>Total</strong> {% if balanced %}<span class="chip ok">Seimbang</span>{% else %}<span class="chip danger">Tidak seimbang</span>{% endif %}</td><td class="num"><strong>{{ debit }}</strong></td><td class="num"><strong>{{ credit }}</strong></td></tr>
+</tbody></table>
+<p class="muted small">Biaya operasional periode ini: {{ expenses }} (dicatat di halaman Biaya, dibayar dari kas/bank). Refund tunai mengurangi kas.</p>
+</div>
+{% endblock %}

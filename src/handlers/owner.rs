@@ -550,6 +550,8 @@ pub struct SettingsForm {
     discount_pct: String,
     theme: String,
     require_device: Option<String>,
+    busy_threshold: Option<i64>,
+    busy_extra_min: Option<i64>,
 }
 
 pub async fn save_settings(
@@ -617,7 +619,7 @@ pub async fn save_settings(
         return settings_page(&st, &staff, Some("Pembulatan atau tema tidak valid.".into()), None).await;
     }
     let mut tx = crate::db::begin_write(&st.db).await?;
-    sqlx::query("UPDATE outlet_settings SET kitchen_mode=?, kitchen_printer_host=?, open_from=?, open_to=?, round_to=?, cashier_discount_max_bp=?, theme=?, require_device=? WHERE id=1")
+    sqlx::query("UPDATE outlet_settings SET kitchen_mode=?, kitchen_printer_host=?, open_from=?, open_to=?, round_to=?, cashier_discount_max_bp=?, theme=?, require_device=?, busy_threshold=?, busy_extra_min=? WHERE id=1")
         .bind(f.kitchen_mode.is_some() as i64)
         .bind(if kprinter.is_empty() { None } else { Some(kprinter) })
         .bind(open_from)
@@ -626,6 +628,8 @@ pub async fn save_settings(
         .bind(disc_bp)
         .bind(&f.theme)
         .bind(f.require_device.is_some() as i64)
+        .bind(f.busy_threshold.unwrap_or(0).clamp(0, 500))
+        .bind(f.busy_extra_min.unwrap_or(10).clamp(0, 120))
         .execute(&mut *tx)
         .await?;
     sqlx::query("UPDATE outlet_settings SET outlet_name=?, tax_bp=?, service_bp=?, tax_inclusive=?, service_in_tax_base=?, qr_ordering=?, printer_host=?, paper_cols=?, receipt_footer=?, open_drawer_on_cash=? WHERE id=1")

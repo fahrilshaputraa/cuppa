@@ -40,6 +40,7 @@
           </form>
           <form method="post" action="/owner/items/{{ i.id }}/photo" enctype="multipart/form-data" class="row"><input type="file" name="photo" accept="image/jpeg,image/png,image/webp" required aria-label="Foto menu"><button class="btn" type="submit">Unggah foto</button></form></details>
         <a class="btn" href="/owner/items/{{ i.id }}/modifiers">Varian</a>
+        <a class="btn" href="/owner/items/{{ i.id }}/recipe">Resep</a>
         <form method="post" action="/owner/items/{{ i.id }}/available"><button class="btn" type="submit">{% if i.available == 0 %}Tersedia{% else %}Tandai habis{% endif %}</button></form>
         <form method="post" action="/owner/items/{{ i.id }}/active"><button class="btn" type="submit">{% if i.active == 0 %}Aktifkan{% else %}Nonaktifkan{% endif %}</button></form>
       </td>

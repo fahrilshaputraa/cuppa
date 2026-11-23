@@ -49,10 +49,27 @@ async fn open_state(st: &AppState) -> AppResult<(bool, String)> {
     ))
 }
 
+/// Automatic busy mode (FR-48): when many orders are active, warn customers and add to the wait estimate.
+async fn busy_message(st: &AppState) -> AppResult<Option<String>> {
+    let (threshold, extra): (i64, i64) =
+        sqlx::query_as("SELECT busy_threshold, busy_extra_min FROM outlet_settings WHERE id = 1")
+            .fetch_one(&st.db)
+            .await?;
+    if threshold == 0 {
+        return Ok(None);
+    }
+    let active: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM orders WHERE status IN ('pending','confirmed')")
+        .fetch_one(&st.db)
+        .await?;
+    Ok((active >= threshold).then(|| format!("Sedang ramai. Pesanan mungkin lebih lama sekitar {extra} menit")))
+}
+
 async fn menu_page(st: &AppState, token: &str, error: Option<String>) -> AppResult<Response> {
     let (_, label) = table_by_token(st, token).await?;
     let (open, hours) = open_state(st).await?;
+    let busy = busy_message(st).await?;
     Ok(render(CustomerMenu {
+        busy,
         ctx: Ctx::guest(st).await?,
         can_sold_out: false,
         open,
@@ -192,6 +209,14 @@ pub async fn status_part(State(st): State<AppState>, Path((token, id)): Path<(St
     } else {
         None
     };
+    let rate_items: Vec<(String, String)> = if paid && rated.is_none() {
+        sqlx::query_as("SELECT DISTINCT i.menu_id, m.name FROM order_items i JOIN menu_items m ON m.id = i.menu_id WHERE i.order_id = ? AND i.voided = 0")
+            .bind(&id)
+            .fetch_all(&st.db)
+            .await?
+    } else {
+        Vec::new()
+    };
     let can_join: bool = paid
         && !sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM order_customers WHERE order_id = ?)")
             .bind(&id)
@@ -199,6 +224,7 @@ pub async fn status_part(State(st): State<AppState>, Path((token, id)): Path<(St
             .await?;
     let html = render(CustomerStatusPart {
         can_join,
+        rate_items,
         can_rate: paid && rated.is_none(),
         rated,
         token,

@@ -46,8 +46,30 @@ Honest status of every PRD requirement. ✅ done and tested · 🟡 partial · �
 | FR-39 | 🟡 | ESC/POS LAN + drawer + test print implemented; needs a real-printer check. |
 | FR-40 | ✅ | Docker, systemd, nginx sample, install guide. |
 
-## Additional (FR-41+)
-Built: FR-48 (busiest hours + margin per menu; automatic busy mode not built), FR-65 (daily local-tax CSV and a balanced double-entry sales journal CSV; no in-app ledger), FR-51 owner 2FA (TOTP with replay guard; approvals use the passphrase only, custom roles are covered by per-user permission overrides), FR-57 opt-in loyalty customers with consent, points, favorite item and erasure, FR-61 reservations (deposit is a recorded note, not accounted money), FR-43 split/mixed payment, FR-45 (expenses + per-item cost → gross/net profit), FR-47 order rating, FR-49 vouchers (scheduled prices not built), FR-52 digital receipt link with WhatsApp share, FR-53 call waiter / ask for bill / table bill (merge-split tables and floor plan not built), FR-55 manual delivery channels (GoFood/GrabFood/ShopeeFood as source), FR-62 customer queue display (staff API/webhooks not built).
+## Additional (FR-41 – FR-66)
+| ID | Status | Notes |
+| --- | --- | --- |
+| FR-41–42 | ⏳ | Payment gateway (Midtrans/Xendit). Needs merchant accounts and a public HTTPS URL to build and test against. |
+| FR-43 | ✅ | Split / mixed payment. |
+| FR-44 | ✅ | Ingredients, recipes, purchases with moving-average cost, opname, waste, immutable movements, actual cost per order. Suppliers are not modelled. |
+| FR-45 | ✅ | Expenses, per-menu cost (manual or recipe), gross and net profit. |
+| FR-46, 60, 66 | ⏳ | Multi-branch / multi-tenant: needs the Postgres backend and a tenant model. |
+| FR-47, 58 | ✅ | Rating per order and per menu item. |
+| FR-48 | ✅ | Busiest hours, margin per menu, automatic busy mode (threshold + extra wait). |
+| FR-49 | 🟡 | Vouchers/promos done; scheduled prices not built. |
+| FR-50, 56 | ⏳ | Custom CSS/JS: deliberately deferred until an independent security review (the PRD itself requires it). |
+| FR-51 | 🟡 | Owner 2FA (TOTP, replay-protected). Custom roles are covered by per-user permission overrides. |
+| FR-52 | ✅ | Public digital receipt link + WhatsApp share link (no WhatsApp API sending). |
+| FR-53 | 🟡 | Floor plan, merge orders, move table, call waiter, ask for the bill. Auto-translation (ID/EN) not built. |
+| FR-54 | ⏳ | SQLite → Postgres migration tool (depends on FR-36). |
+| FR-55 | ✅ | Delivery channels as order source (manual). |
+| FR-57 | ✅ | Opt-in loyalty with consent, points, favourite item and erasure. |
+| FR-59 | ⏳ | GoFood/GrabFood/ShopeeFood integration: needs partner access. |
+| FR-61 | ✅ | Reservations (deposit is a note, not accounted money). |
+| FR-62 | 🟡 | Customer queue display and read-only API with hashed, revocable keys. Outgoing webhooks not built. |
+| FR-63 | ⏳ | Full offline mode with conflict resolution. |
+| FR-64 | ⏳ | Native wrappers. |
+| FR-65 | ✅ | Balanced in-app ledger, journal CSV, local-tax CSV. |
+| FR-36 | ⏳ | Postgres. The data layer uses SQLite-specific SQL and triggers; a second dialect is a project of its own (ADR 0001). |
 
-Still not built:
-payment gateway (41–42: needs merchant accounts and a public HTTPS URL to test against), ingredient stock/recipes (44), multi-branch and multi-tenant (46, 60, 66), per-menu rating (58), custom CSS/JS (50, 56 — needs a dedicated security review), floor plan, merge tables and translation (53), Postgres and the migration tool (36, 54), platform integrations (59), API/webhooks (62), full offline mode (63), native wrappers (64), in-app accounting ledger (65). Receipt printing and the cash drawer are implemented but have not been exercised on real hardware.
+Receipt printing and the cash drawer are implemented but have not been exercised on real hardware.

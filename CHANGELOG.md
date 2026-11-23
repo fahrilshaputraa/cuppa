@@ -14,5 +14,6 @@ Format: [Keep a Changelog](https://keepachangelog.com), versioning: [SemVer](htt
 - PRD core: wizard (flow modes), modifiers, stock, discounts with approval, item void, table move, refunds, cash in/out, history, CSV import, opening hours, rounding, themes, per-user permissions, registered devices, idle lock, kitchen ticket printing, new-order sound.
 - Redesign (unslop): self-hosted Figtree, neutral ramp + one accent, line icons, perforated tickets, thermal receipt, sales chart.
 - Split/mixed payment, vouchers, digital receipt link, call waiter / bill, ratings, queue display, expenses + profit, menu photos, stations, reservations, loyalty, owner 2FA.
+- Recipes and ingredient stock (purchases, opname, waste), per-menu ratings, busy mode, floor plan, order merge, read-only API keys, in-app ledger.
 - Safe operations: snapshot before migrations, `verify-backup`, restore script, install guide, nginx/systemd samples, `docs/PRD-COVERAGE.md`.
 - DESIGN.md design system, CI (fmt, clippy, test, cargo-deny, RustSec), Dockerfile.

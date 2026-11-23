@@ -171,22 +171,18 @@ pub async fn bill(
 
 // ---- Ratings (FR-47) ---------------------------------------------------------------------------
 
-#[derive(Deserialize)]
-pub struct RatingForm {
-    stars: i64,
-    comment: Option<String>,
-}
-
 pub async fn rate(
     State(st): State<AppState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Path((token, id)): Path<(String, String)>,
-    Form(f): Form<RatingForm>,
+    Form(fields): Form<Vec<(String, String)>>,
 ) -> AppResult<Response> {
     limit(&st, &headers, peer, &token, "rate")?;
     let (table_id, _) = table_by_token(&st, &token).await?;
-    if !(1..=5).contains(&f.stars) {
+    let get = |k: &str| fields.iter().find(|(n, _)| n == k).map(|(_, v)| v.trim().to_string());
+    let stars: i64 = get("stars").and_then(|v| v.parse().ok()).unwrap_or(0);
+    if !(1..=5).contains(&stars) {
         return Err(AppError::Invalid("Nilai harus 1–5.".into()));
     }
     let paid: bool =
@@ -198,14 +194,39 @@ pub async fn rate(
     if !paid {
         return Err(AppError::NotFound);
     }
-    let comment = clean(f.comment.as_deref().unwrap_or(""), 200);
-    // One rating per order: INSERT OR IGNORE keeps the first one.
-    sqlx::query("INSERT OR IGNORE INTO order_ratings (order_id, stars, comment, created_at) VALUES (?,?,?,?)")
-        .bind(&id)
-        .bind(f.stars)
-        .bind(if comment.is_empty() { None } else { Some(comment) })
-        .bind(clock::now())
-        .execute(&st.db)
-        .await?;
+    let comment = clean(&get("comment").unwrap_or_default(), 200);
+    let mut tx = crate::db::begin_write(&st.db).await?;
+    // One rating per order: INSERT OR IGNORE keeps the first one (and its per-menu stars).
+    let first =
+        sqlx::query("INSERT OR IGNORE INTO order_ratings (order_id, stars, comment, created_at) VALUES (?,?,?,?)")
+            .bind(&id)
+            .bind(stars)
+            .bind(if comment.is_empty() { None } else { Some(comment) })
+            .bind(clock::now())
+            .execute(&mut *tx)
+            .await?
+            .rows_affected()
+            == 1;
+    if first {
+        for (k, v) in &fields {
+            let Some(menu_id) = k.strip_prefix("item_") else {
+                continue;
+            };
+            let Ok(s) = v.trim().parse::<i64>() else { continue };
+            if !(1..=5).contains(&s) {
+                continue;
+            }
+            // Only items that are really on this order can be rated.
+            sqlx::query("INSERT OR IGNORE INTO order_item_ratings (order_id, menu_id, stars) SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM order_items WHERE order_id = ? AND menu_id = ?)")
+                .bind(&id)
+                .bind(menu_id)
+                .bind(s)
+                .bind(&id)
+                .bind(menu_id)
+                .execute(&mut *tx)
+                .await?;
+        }
+    }
+    tx.commit().await?;
     Ok(Redirect::to(&format!("/m/{token}/orders/{id}")).into_response())
 }

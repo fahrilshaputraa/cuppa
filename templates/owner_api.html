@@ -1,0 +1,15 @@
+{% extends "app.html" %}
+{% block title %}API{% endblock %}
+{% block body %}
+<div class="page-head"><h1>API baca-saja</h1></div>
+{% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
+{% if let Some(k) = new_key %}<div class="notice" role="status"><strong>Simpan kunci ini sekarang, tidak akan ditampilkan lagi:</strong><br><code>{{ k }}</code></div>{% endif %}
+<p class="muted">Untuk sistem lain (akuntansi, dasbor). Kunci hanya bisa membaca. Contoh: <code>curl -H "Authorization: Bearer KUNCI" {{ base }}/api/v1/sales?from=2026-11-01&amp;to=2026-11-30</code>. Endpoint: <code>/api/v1/sales</code>, <code>/api/v1/menu</code>.</p>
+<form class="panel row" method="post" action="/owner/api"><div class="field"><label for="kn">Nama kunci</label><input id="kn" name="name" required maxlength="40" placeholder="Akuntansi"></div><button class="btn primary" type="submit">Buat kunci</button></form>
+<div class="panel">
+{% if keys.is_empty() %}<div class="empty"><strong>Belum ada kunci</strong></div>{% else %}
+<table class="ledger"><thead><tr><th>Nama</th><th>Dibuat</th><th>Terakhir dipakai</th><th>Status</th><th></th></tr></thead><tbody>
+{% for k in keys %}<tr><td>{{ k.1 }}</td><td class="muted">{{ k.2 }}</td><td class="muted">{{ k.3 }}</td><td>{% if k.4 %}<span class="chip danger">Dicabut</span>{% else %}<span class="chip ok">Aktif</span>{% endif %}</td><td>{% if !k.4 %}<form method="post" action="/owner/api/{{ k.0 }}/revoke"><button class="btn danger" type="submit">Cabut</button></form>{% endif %}</td></tr>{% endfor %}
+</tbody></table>{% endif %}
+</div>
+{% endblock %}

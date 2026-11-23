@@ -80,7 +80,8 @@ pub async fn create_order(conn: &mut SqliteConnection, st: &AppState, o: NewOrde
         };
         let unit = r.price + extra;
         subtotal += unit * req.qty;
-        lines.push((r.id, name, unit, req.qty, r.cost));
+        let cost = super::inventory::recipe_cost(conn, &r.id).await?.unwrap_or(r.cost);
+        lines.push((r.id, name, unit, req.qty, cost));
     }
     let t = money::compute(subtotal, 0, rules(&settings), settings.round_to);
     let now = clock::now();
@@ -188,6 +189,10 @@ pub async fn restore_stock(conn: &mut SqliteConnection, order_id: &str) -> sqlx:
 }
 
 /// Recompute totals from live (non-voided) items, keeping the discount (clamped).
+pub async fn recalc_public(conn: &mut SqliteConnection, id: &str, discount: Option<i64>) -> AppResult<money::Totals> {
+    recalc(conn, id, discount).await
+}
+
 async fn recalc(conn: &mut SqliteConnection, id: &str, discount: Option<i64>) -> AppResult<money::Totals> {
     let settings = load_settings(conn).await?;
     let subtotal: i64 = sqlx::query_scalar(
@@ -334,6 +339,17 @@ pub async fn render_detail(
             .await?;
     let paid_sum: i64 = pays.iter().map(|p| p.1).sum();
     let tz = st.cfg.tz_offset_hours;
+    let merge_opts: Vec<(String, String)> = if matches!(o.status.as_str(), "pending" | "confirmed" | "ready") {
+        sqlx::query_as::<_, (String, i64, Option<String>)>("SELECT o2.id, o2.number, t.label FROM orders o2 LEFT JOIN tables t ON t.id = o2.table_id WHERE o2.id != ? AND o2.status IN ('pending','confirmed','ready') ORDER BY o2.number")
+            .bind(id)
+            .fetch_all(&mut *c)
+            .await?
+            .into_iter()
+            .map(|(oid, n, l)| (oid, format!("#{n} · {}", l.map(|l| format!("Meja {l}")).unwrap_or_else(|| "Antre".into()))))
+            .collect()
+    } else {
+        Vec::new()
+    };
     let (label, class) = status_meta(&o.status);
     let editable = matches!(o.status.as_str(), "pending" | "confirmed" | "ready");
     let page = OrderDetail {
@@ -364,6 +380,7 @@ pub async fn render_detail(
         rounding: rupiah(o.rounding),
         has_rounding: o.rounding != 0,
         total: rupiah(o.total),
+        merge_options: merge_opts,
         quick: quick_cash(o.total).into_iter().map(|v| (v, rupiah(v))).collect(),
         status_label: label,
         status_class: class,
@@ -774,6 +791,9 @@ pub async fn pay(
             .bind(&id)
             .execute(&mut *tx)
             .await?;
+    }
+    if fully_paid {
+        super::inventory::deduct_for_order(&mut tx, &id, &staff.id).await?;
     }
     let mut e = Entry::new(
         Some(&staff.id),

@@ -866,6 +866,10 @@ async fn pages_have_no_inline_script_or_style() {
         "/cashier/history".into(),
         "/owner/vouchers".into(),
         "/owner/stations".into(),
+        "/owner/ingredients".into(),
+        "/owner/api".into(),
+        "/owner/ledger".into(),
+        "/cashier/floor".into(),
         "/owner/customers".into(),
         "/owner/security".into(),
         "/cashier/reservations".into(),
@@ -929,6 +933,16 @@ async fn customer_cannot_see_other_tables_orders() {
 // ---------------------------------------------------------------------------------------------
 // PRD core features
 // ---------------------------------------------------------------------------------------------
+
+async fn db_q<T: for<'r> sqlx::Decode<'r, sqlx::Sqlite> + sqlx::Type<sqlx::Sqlite> + Send + Unpin>(
+    a: &App,
+    sql: String,
+) -> T {
+    sqlx::query_scalar(sqlx::AssertSqlSafe(sql))
+        .fetch_one(&a.st.db)
+        .await
+        .unwrap()
+}
 
 async fn db_one<T: for<'r> sqlx::Decode<'r, sqlx::Sqlite> + sqlx::Type<sqlx::Sqlite> + Send + Unpin>(
     a: &App,
@@ -2515,4 +2529,478 @@ async fn analytics_tax_and_journal_exports() {
             StatusCode::FORBIDDEN
         );
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Recipes/stock, API keys, ledger, floor/merge, busy mode, per-menu rating
+// ---------------------------------------------------------------------------------------------
+
+#[tokio::test]
+async fn recipes_deduct_stock_on_payment_and_drive_actual_cost() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let (token, item, cashier) = seed(&a, &owner).await;
+    send(
+        &a,
+        "POST",
+        "/owner/ingredients",
+        Some(&owner),
+        Some("name=Biji+kopi&unit=gram&low_at=50"),
+        true,
+    )
+    .await;
+    send(
+        &a,
+        "POST",
+        "/owner/ingredients",
+        Some(&owner),
+        Some("name=Susu&unit=ml"),
+        true,
+    )
+    .await;
+    let (kopi, susu): (String, String) = (
+        db_one(&a, "SELECT id FROM ingredients WHERE name='Biji kopi'").await,
+        db_one(&a, "SELECT id FROM ingredients WHERE name='Susu'").await,
+    );
+    // 1.000 g coffee for Rp150.000 => Rp150/g ; 2.000 ml milk for Rp30.000 => Rp15/ml
+    send(
+        &a,
+        "POST",
+        &format!("/owner/ingredients/{kopi}/buy"),
+        Some(&owner),
+        Some("qty=1000&total_price=150000"),
+        true,
+    )
+    .await;
+    send(
+        &a,
+        "POST",
+        &format!("/owner/ingredients/{susu}/buy"),
+        Some(&owner),
+        Some("qty=2000&total_price=30000"),
+        true,
+    )
+    .await;
+    // Latte = 18 g coffee + 200 ml milk = 2.700 + 3.000 = Rp5.700 per portion.
+    send(
+        &a,
+        "POST",
+        &format!("/owner/items/{item}/recipe"),
+        Some(&owner),
+        Some(&format!("ingredient_id={kopi}&qty=18")),
+        true,
+    )
+    .await;
+    send(
+        &a,
+        "POST",
+        &format!("/owner/items/{item}/recipe"),
+        Some(&owner),
+        Some(&format!("ingredient_id={susu}&qty=200")),
+        true,
+    )
+    .await;
+    let page = send(
+        &a,
+        "GET",
+        &format!("/owner/items/{item}/recipe"),
+        Some(&owner),
+        None,
+        false,
+    )
+    .await;
+    assert!(page.body.contains("Rp5.700"), "{}", page.body);
+    send(
+        &a,
+        "POST",
+        "/cashier/shift/open",
+        Some(&cashier),
+        Some("opening=0"),
+        true,
+    )
+    .await;
+    send(
+        &a,
+        "POST",
+        &format!("/m/{token}/orders"),
+        None,
+        Some(&format!("qty_{item}=2")),
+        true,
+    )
+    .await;
+    assert_eq!(
+        db_one::<i64>(&a, "SELECT unit_cost FROM order_items").await,
+        5_700,
+        "cost snapshot comes from the recipe"
+    );
+    let oid: String = db_one(&a, "SELECT id FROM orders").await;
+    send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/confirm"),
+        Some(&cashier),
+        Some(""),
+        true,
+    )
+    .await;
+    // Stock is untouched until the order is fully paid.
+    assert_eq!(
+        db_one::<i64>(&a, "SELECT stock FROM ingredients WHERE name='Biji kopi'").await,
+        1000
+    );
+    send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/pay"),
+        Some(&cashier),
+        Some("method=cash&tendered=60000"),
+        true,
+    )
+    .await;
+    assert_eq!(
+        db_one::<i64>(&a, "SELECT stock FROM ingredients WHERE name='Biji kopi'").await,
+        1000 - 36
+    );
+    assert_eq!(
+        db_one::<i64>(&a, "SELECT stock FROM ingredients WHERE name='Susu'").await,
+        2000 - 400
+    );
+    assert_eq!(
+        db_one::<i64>(&a, "SELECT COUNT(*) FROM stock_movements WHERE kind='sale'").await,
+        2
+    );
+    // Movements are immutable; opname records the difference; waste needs a reason.
+    assert!(
+        sqlx::query("DELETE FROM stock_movements")
+            .execute(&a.st.db)
+            .await
+            .is_err()
+    );
+    send(
+        &a,
+        "POST",
+        &format!("/owner/ingredients/{kopi}/opname"),
+        Some(&owner),
+        Some("counted=900&note=hitung+ulang"),
+        true,
+    )
+    .await;
+    assert_eq!(
+        db_one::<i64>(&a, "SELECT qty FROM stock_movements WHERE kind='opname'").await,
+        900 - 964
+    );
+    let w = send(
+        &a,
+        "POST",
+        &format!("/owner/ingredients/{kopi}/waste"),
+        Some(&owner),
+        Some("qty=10&reason="),
+        true,
+    )
+    .await;
+    assert!(w.body.contains("wajib diisi"));
+    // Cashiers cannot touch inventory.
+    assert_eq!(
+        send(&a, "GET", "/owner/ingredients", Some(&cashier), None, false)
+            .await
+            .status,
+        StatusCode::FORBIDDEN
+    );
+    // Moving-average cost: buying 1.000 g more at Rp300/g => (900*150 + 1000*300)/1900 ≈ Rp229/g
+    send(
+        &a,
+        "POST",
+        &format!("/owner/ingredients/{kopi}/buy"),
+        Some(&owner),
+        Some("qty=1000&total_price=300000"),
+        true,
+    )
+    .await;
+    let c: i64 = db_one(&a, "SELECT unit_cost_x1000 FROM ingredients WHERE name='Biji kopi'").await;
+    assert!((228_000..=230_000).contains(&c), "{c}");
+}
+
+#[tokio::test]
+async fn read_only_api_needs_a_valid_unrevoked_key() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let (_, _, cashier) = seed(&a, &owner).await;
+    let none = send(&a, "GET", "/api/v1/sales", None, None, false).await;
+    assert_eq!(none.status, StatusCode::UNAUTHORIZED);
+    assert!(none.body.contains("\"error\""));
+    assert_eq!(
+        send(&a, "GET", "/owner/api", Some(&cashier), None, false).await.status,
+        StatusCode::FORBIDDEN
+    );
+    let made = send(&a, "POST", "/owner/api", Some(&owner), Some("name=Akuntansi"), true).await;
+    let key = made
+        .body
+        .split("<code>")
+        .nth(1)
+        .unwrap()
+        .split("</code>")
+        .next()
+        .unwrap()
+        .to_string();
+    assert!(key.starts_with("cuppa_"), "{key}");
+    // Only the hash is stored.
+    assert_eq!(
+        db_q::<i64>(
+            &a,
+            format!(
+                "SELECT COUNT(*) FROM api_keys WHERE token_hash LIKE '%{}%'",
+                &key[6..14]
+            )
+        )
+        .await,
+        0
+    );
+    let ok = bearer(&a, "/api/v1/sales", &key).await;
+    assert_eq!(ok.status, StatusCode::OK, "{}", ok.body);
+    assert!(ok.body.contains("\"days\""));
+    assert_eq!(bearer(&a, "/api/v1/menu", &key).await.status, StatusCode::OK);
+    assert_eq!(
+        bearer(&a, "/api/v1/sales?from=bad", &key).await.status,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        bearer(&a, "/api/v1/sales", "cuppa_wrong").await.status,
+        StatusCode::FORBIDDEN
+    );
+    let id: String = db_one(&a, "SELECT id FROM api_keys").await;
+    send(
+        &a,
+        "POST",
+        &format!("/owner/api/{id}/revoke"),
+        Some(&owner),
+        Some(""),
+        true,
+    )
+    .await;
+    assert_eq!(bearer(&a, "/api/v1/sales", &key).await.status, StatusCode::FORBIDDEN);
+    // The API is GET-only: write attempts are rejected.
+    assert_ne!(
+        send(&a, "POST", "/api/v1/sales", None, Some(""), true).await.status,
+        StatusCode::OK
+    );
+}
+
+async fn bearer(a: &App, uri: &str, key: &str) -> Res {
+    let mut req = Request::builder()
+        .method("GET")
+        .uri(uri)
+        .header(header::HOST, "localhost:8080")
+        .header(header::AUTHORIZATION, format!("Bearer {key}"))
+        .body(Body::empty())
+        .unwrap();
+    req.extensions_mut()
+        .insert(ConnectInfo("10.0.0.9:5555".parse::<SocketAddr>().unwrap()));
+    let r = a.app.clone().oneshot(req).await.unwrap();
+    let (p, body) = r.into_parts();
+    Res {
+        status: p.status,
+        headers: p.headers,
+        body: String::from_utf8_lossy(&body.collect().await.unwrap().to_bytes()).into(),
+    }
+}
+
+#[tokio::test]
+async fn floor_plan_merge_and_ledger_balance() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let (token, item, cashier) = seed(&a, &owner).await;
+    send(
+        &a,
+        "POST",
+        "/cashier/shift/open",
+        Some(&cashier),
+        Some("opening=0"),
+        true,
+    )
+    .await;
+    for _ in 0..2 {
+        send(
+            &a,
+            "POST",
+            "/cashier/new",
+            Some(&cashier),
+            Some(&format!("qty_{item}=1&channel=dine_in")),
+            true,
+        )
+        .await;
+    }
+    let ids: Vec<String> = sqlx::query_scalar("SELECT id FROM orders ORDER BY number")
+        .fetch_all(&a.st.db)
+        .await
+        .unwrap();
+    assert_eq!(ids.len(), 2);
+    let tid: String = db_one(&a, "SELECT id FROM tables").await;
+    send(
+        &a,
+        "POST",
+        &format!("/orders/{}/move", ids[0]),
+        Some(&cashier),
+        Some(&format!("table_id={tid}")),
+        true,
+    )
+    .await;
+    let floor = send(&a, "GET", "/cashier/floor", Some(&cashier), None, false).await;
+    assert!(
+        floor.body.contains("1 pesanan") && floor.body.contains("Rp27.500"),
+        "{}",
+        floor.body
+    );
+    // Merge order 2 into order 1: items move, order 2 closes without restoring stock.
+    let m = send(
+        &a,
+        "POST",
+        &format!("/orders/{}/merge", ids[0]),
+        Some(&cashier),
+        Some(&format!("other_id={}", ids[1])),
+        true,
+    )
+    .await;
+    assert!(m.body.contains("digabung"), "{}", m.body);
+    assert_eq!(
+        db_q::<i64>(
+            &a,
+            format!("SELECT COUNT(*) FROM order_items WHERE order_id='{}'", ids[0])
+        )
+        .await,
+        2
+    );
+    assert_eq!(
+        db_q::<i64>(&a, format!("SELECT total FROM orders WHERE id='{}'", ids[0])).await,
+        55_000
+    );
+    assert_eq!(
+        db_q::<String>(&a, format!("SELECT status FROM orders WHERE id='{}'", ids[1])).await,
+        "cancelled"
+    );
+    assert_eq!(
+        send(
+            &a,
+            "POST",
+            &format!("/orders/{}/merge", ids[0]),
+            Some(&cashier),
+            Some(&format!("other_id={}", ids[0])),
+            true
+        )
+        .await
+        .status,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    send(
+        &a,
+        "POST",
+        &format!("/orders/{}/pay", ids[0]),
+        Some(&cashier),
+        Some("method=cash&amount=30000&tendered=30000"),
+        true,
+    )
+    .await;
+    send(
+        &a,
+        "POST",
+        &format!("/orders/{}/pay", ids[0]),
+        Some(&cashier),
+        Some("method=qris&reference=Q1"),
+        true,
+    )
+    .await;
+    let led = send(&a, "GET", "/owner/ledger", Some(&owner), None, false).await;
+    assert!(
+        led.body.contains("Seimbang") && led.body.contains("Rp55.000"),
+        "{}",
+        led.body
+    );
+    let _ = token;
+}
+
+#[tokio::test]
+async fn busy_mode_and_per_menu_rating() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    let (token, item, cashier) = seed(&a, &owner).await;
+    let base = "outlet_name=K&tax_pct=10&service_pct=0&paper_cols=32&receipt_footer=x&round_to=0&discount_pct=10&theme=copper&qr_ordering=1";
+    send(
+        &a,
+        "POST",
+        "/owner/settings",
+        Some(&owner),
+        Some(&format!("{base}&busy_threshold=1&busy_extra_min=15")),
+        true,
+    )
+    .await;
+    assert!(
+        !send(&a, "GET", &format!("/m/{token}"), None, None, false)
+            .await
+            .body
+            .contains("Sedang ramai")
+    );
+    send(
+        &a,
+        "POST",
+        &format!("/m/{token}/orders"),
+        None,
+        Some(&format!("qty_{item}=1")),
+        true,
+    )
+    .await;
+    assert!(
+        send(&a, "GET", &format!("/m/{token}"), None, None, false)
+            .await
+            .body
+            .contains("sekitar 15 menit")
+    );
+    // Per-menu stars are kept only for items on the order and only once.
+    send(
+        &a,
+        "POST",
+        "/cashier/shift/open",
+        Some(&cashier),
+        Some("opening=0"),
+        true,
+    )
+    .await;
+    let oid: String = db_one(&a, "SELECT id FROM orders").await;
+    send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/confirm"),
+        Some(&cashier),
+        Some(""),
+        true,
+    )
+    .await;
+    send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/pay"),
+        Some(&cashier),
+        Some("method=cash&tendered=30000"),
+        true,
+    )
+    .await;
+    send(
+        &a,
+        "POST",
+        &format!("/m/{token}/orders/{oid}/rating"),
+        None,
+        Some(&format!("stars=4&item_{item}=5&item_nonexistent=1")),
+        true,
+    )
+    .await;
+    assert_eq!(db_one::<i64>(&a, "SELECT COUNT(*) FROM order_item_ratings").await, 1);
+    assert_eq!(db_one::<i64>(&a, "SELECT stars FROM order_item_ratings").await, 5);
+    send(
+        &a,
+        "POST",
+        &format!("/m/{token}/orders/{oid}/rating"),
+        None,
+        Some(&format!("stars=1&item_{item}=1")),
+        true,
+    )
+    .await;
+    assert_eq!(db_one::<i64>(&a, "SELECT stars FROM order_item_ratings").await, 5);
 }

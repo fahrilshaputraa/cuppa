@@ -3,7 +3,9 @@ pub mod admin;
 pub mod cashier;
 pub mod customer;
 pub mod extras;
+pub mod inventory;
 pub mod more;
+pub mod ops;
 pub mod orders;
 pub mod owner;
 pub mod public;
@@ -24,7 +26,7 @@ pub async fn load_settings(conn: &mut SqliteConnection) -> Result<SettingsRow, A
     Ok(sqlx::query_as(
         "SELECT outlet_name, tax_bp, service_bp, tax_inclusive, service_in_tax_base, qr_ordering, confirm_timeout_min, \
          printer_host, paper_cols, receipt_footer, open_drawer_on_cash, kitchen_mode, wizard_done, open_from, open_to, \
-         round_to, cashier_discount_max_bp, theme, require_device, kitchen_printer_host FROM outlet_settings WHERE id = 1",
+         round_to, cashier_discount_max_bp, theme, require_device, kitchen_printer_host, busy_threshold, busy_extra_min FROM outlet_settings WHERE id = 1",
     )
     .fetch_one(conn)
     .await?)

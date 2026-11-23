@@ -25,7 +25,9 @@ use axum::{
     routing::{get, post},
 };
 use futures_util::Stream;
-use handlers::{admin, cashier, customer, extras, more, orders, owner, public, receipt, reports, session};
+use handlers::{
+    admin, cashier, customer, extras, inventory, more, ops, orders, owner, public, receipt, reports, session,
+};
 use sqlx::SqlitePool;
 use std::{
     convert::Infallible,
@@ -143,6 +145,20 @@ pub fn router(st: AppState) -> Router {
         .route("/owner/security", get(more::security_get))
         .route("/owner/security/enable", post(more::security_enable))
         .route("/owner/security/disable", post(more::security_disable))
+        .route("/cashier/floor", get(ops::floor))
+        .route("/orders/{id}/merge", post(ops::merge))
+        .route("/owner/ingredients", get(inventory::get).post(inventory::add))
+        .route("/owner/ingredients/{id}/buy", post(inventory::buy))
+        .route("/owner/ingredients/{id}/opname", post(inventory::opname))
+        .route("/owner/ingredients/{id}/waste", post(inventory::waste))
+        .route(
+            "/owner/items/{id}/recipe",
+            get(inventory::recipe_get).post(inventory::recipe_set),
+        )
+        .route("/owner/items/{id}/recipe/{ing}/remove", post(inventory::recipe_remove))
+        .route("/owner/api", get(ops::keys_get).post(ops::keys_add))
+        .route("/owner/api/{id}/revoke", post(ops::keys_revoke))
+        .route("/owner/ledger", get(ops::ledger))
         .route("/owner/vouchers", get(admin::vouchers_get).post(admin::vouchers_add))
         .route("/owner/vouchers/{id}/active", post(admin::vouchers_toggle))
         .route("/owner/expenses", get(admin::expenses_get).post(admin::expenses_add))
@@ -173,6 +189,8 @@ pub fn router(st: AppState) -> Router {
         .merge(public)
         .merge(staff)
         .route("/healthz", get(health))
+        .route("/api/v1/sales", get(ops::api_sales))
+        .route("/api/v1/menu", get(ops::api_menu))
         .nest_service("/static", ServeDir::new("static"))
         .layer(middleware::from_fn(security::csrf))
         .layer(middleware::from_fn_with_state(st.clone(), security::headers))

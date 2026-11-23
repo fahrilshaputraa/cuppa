@@ -11,6 +11,8 @@
 <form class="panel" method="post" action="/m/{{ token }}/orders/{{ id }}/rating">
   <h3>Bagaimana pesanan Anda?</h3>
   <div class="stars" role="radiogroup" aria-label="Nilai">{% for n in [1,2,3,4,5] %}<label><input type="radio" name="stars" value="{{ n }}" required> {{ n }}</label>{% endfor %}</div>
+  {% if rate_items.len() > 1 || !rate_items.is_empty() %}<details class="inline-details"><summary class="muted small">Nilai tiap menu (opsional)</summary>
+    {% for m in rate_items %}<div class="field"><label for="ri{{ loop.index }}">{{ m.1 }}</label><select id="ri{{ loop.index }}" name="item_{{ m.0 }}"><option value="">—</option><option value="5">5</option><option value="4">4</option><option value="3">3</option><option value="2">2</option><option value="1">1</option></select></div>{% endfor %}</details>{% endif %}
   <div class="field"><label for="rc">Komentar (opsional)</label><input id="rc" name="comment" maxlength="200"></div>
   <button class="btn primary" type="submit">Kirim</button>
 </form>

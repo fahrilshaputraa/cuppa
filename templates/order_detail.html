@@ -36,6 +36,10 @@
   <details class="panel"><summary><strong>Voucher</strong></summary>
     <form method="post" action="/orders/{{ o.id }}/voucher" class="row"><input name="code" placeholder="Kode voucher" required maxlength="20" aria-label="Kode voucher" autocomplete="off"><button class="btn" type="submit">Pakai</button></form></details>
   {% endif %}
+  {% if editable && !has_partial && !merge_options.is_empty() %}
+  <details class="panel"><summary><strong>Gabung pesanan</strong></summary>
+    <form method="post" action="/orders/{{ o.id }}/merge" class="row"><select name="other_id" aria-label="Pesanan yang digabung">{% for m in merge_options %}<option value="{{ m.0 }}">{{ m.1 }}</option>{% endfor %}</select><button class="btn" type="submit">Gabungkan ke sini</button></form></details>
+  {% endif %}
   {% if editable %}
   <details class="panel"><summary><strong>Pindah meja</strong></summary>
     <form method="post" action="/orders/{{ o.id }}/move" class="row"><select name="table_id" aria-label="Meja tujuan"><option value="">Bawa pulang / antre</option>{% for t in tables %}<option value="{{ t.id }}">Meja {{ t.label }}</option>{% endfor %}</select><button class="btn" type="submit">Pindahkan</button></form></details>

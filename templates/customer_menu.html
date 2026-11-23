@@ -4,6 +4,7 @@
 <div class="cust">
   <h1>{{ ctx.outlet }}</h1>
   <p class="muted">Meja {{ table_label }}</p>
+  {% if let Some(b) = busy %}<div class="notice" role="status">{{ b }}</div>{% endif %}
   {% if !open %}<div class="alert" role="status">Kafe sedang tutup{% if !hours.is_empty() %} · jam buka {{ hours }}{% endif %}. Pesanan belum bisa dikirim.</div>{% endif %}
   {% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
   <form method="post" action="/m/{{ token }}/orders" data-cart>
