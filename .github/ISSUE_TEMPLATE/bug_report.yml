@@ -1,0 +1,11 @@
+name: Bug report
+description: Something is broken
+labels: [bug]
+body:
+  - type: textarea
+    attributes: { label: What happened?, description: Steps, expected vs actual }
+    validations: { required: true }
+  - type: input
+    attributes: { label: Version / commit }
+  - type: markdown
+    attributes: { value: "Security issue? Do NOT file it here — see SECURITY.md." }

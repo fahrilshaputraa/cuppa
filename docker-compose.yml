@@ -1,0 +1,17 @@
+services:
+  cuppa:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"   # publish only on loopback; put nginx/Caddy in front
+    environment:
+      CUPPA_PUBLIC_URL: ${CUPPA_PUBLIC_URL:-http://localhost:8080}
+      CUPPA_TRUST_PROXY: ${CUPPA_TRUST_PROXY:-false}
+    volumes:
+      - cuppa-data:/app/data
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+volumes:
+  cuppa-data:

@@ -1,0 +1,10 @@
+/target
+/data/*
+!/data/.gitkeep
+.env
+.env.*
+!.env.example
+*.db
+*.db-shm
+*.db-wal
+.DS_Store
