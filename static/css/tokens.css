@@ -22,9 +22,11 @@
   --warn: #946000;
   --danger: #b3261e;
 
-  --r-control: 8px;
-  --r-card: 12px;
-  --radius: 12px;
+  --r-control: 10px;
+  --r-card: 14px;
+  --radius: 14px;
+  --copper-l: #e8905a;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px;
   --t-xs: 0.75rem; --t-sm: 0.8125rem; --t-md: 0.9375rem; --t-lg: 1.0625rem; --t-xl: 1.25rem; --t-2xl: 1.5rem; --t-3xl: 2rem;

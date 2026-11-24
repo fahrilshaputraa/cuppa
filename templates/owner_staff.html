@@ -1,7 +1,7 @@
 {% extends "app.html" %}
 {% block title %}Staf{% endblock %}
 {% block body %}
-<h1>Staf</h1>
+<div class="page-head"><div><h1>Staf</h1><p class="sub">Peran dan izin per orang</p></div></div>
 {% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
 <form class="panel" method="post" action="/owner/staff">
   <h3>Tambah staf</h3>
@@ -12,9 +12,9 @@
 </form>
 <div class="panel"><table class="ledger"><thead><tr><th>Nama</th><th>Peran</th><th>Status</th><th></th></tr></thead><tbody>
 {% for u in users %}<tr><td>{{ u.name }}</td><td>{{ u.role }}</td><td>{% if u.active == 1 %}<span class="chip ok">Aktif</span>{% else %}<span class="chip neutral">Nonaktif</span>{% endif %}</td>
-<td class="row"><form method="post" action="/owner/staff/{{ u.id }}/active"><button class="btn" type="submit">{% if u.active == 1 %}Nonaktifkan{% else %}Aktifkan{% endif %}</button></form>
+<td><div class="row"><form method="post" action="/owner/staff/{{ u.id }}/active"><button class="btn" type="submit">{% if u.active == 1 %}Nonaktifkan{% else %}Aktifkan{% endif %}</button></form>
 {% if !u.is_owner %}<details class="inline"><summary class="btn">Izin</summary>
 <form method="post" action="/owner/staff/{{ u.id }}/perms">{% for p in u.perms %}<label class="opt"><input type="checkbox" name="perm_{{ p.0 }}" value="1" {% if p.2 %}checked{% endif %}> {{ p.1 }}</label>{% endfor %}<button class="btn primary" type="submit">Simpan izin</button></form></details>{% endif %}
-</td></tr>{% endfor %}
+</div></td></tr>{% endfor %}
 </tbody></table></div>
 {% endblock %}

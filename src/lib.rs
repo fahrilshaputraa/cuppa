@@ -50,6 +50,8 @@ pub struct AppState {
     /// One-time first-run code (printed to the server log). `None` once an owner exists.
     pub setup_code: Arc<Mutex<Option<String>>>,
     pub secret_key: Arc<secrets::SecretKey>,
+    /// Cache-busting token for static assets: changes on every server start, so updates are never served stale.
+    pub asset_v: Arc<str>,
 }
 
 impl AppState {
@@ -65,6 +67,7 @@ impl AppState {
             limiter: Arc::new(security::RateLimiter::default()),
             setup_code: Arc::new(Mutex::new(setup_code)),
             secret_key,
+            asset_v: format!("{:x}", clock::now()).into(),
         })
     }
 }

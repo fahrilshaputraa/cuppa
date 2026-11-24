@@ -1,7 +1,7 @@
 {% extends "app.html" %}
 {% block title %}Meja &amp; QR{% endblock %}
 {% block body %}
-<h1>Meja &amp; QR</h1>
+<div class="page-head"><div><h1>Meja &amp; QR</h1><p class="sub">Cetak QR untuk tiap meja</p></div></div>
 {% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
 <form class="panel row" method="post" action="/owner/tables">
   <div class="field"><label for="label">Nomor / nama meja</label><input id="label" name="label" required maxlength="20"></div>
@@ -16,10 +16,10 @@
   <tbody>
   {% for t in tables %}
     <tr><td>{{ t.label }}</td><td>{% if t.active == 1 %}<span class="chip ok">Aktif</span>{% else %}<span class="chip neutral">Nonaktif</span>{% endif %}</td>
-    <td class="row">
+    <td><div class="row">
       <a class="btn" href="/owner/tables/{{ t.id }}/qr">Cetak QR</a>
       <form method="post" action="/owner/tables/{{ t.id }}/rotate"><button class="btn" type="submit">Putar token</button></form>
-    </td></tr>
+    </div></td></tr>
   {% endfor %}
   </tbody>
 </table>

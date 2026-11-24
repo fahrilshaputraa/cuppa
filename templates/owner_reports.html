@@ -1,7 +1,7 @@
 {% extends "app.html" %}
 {% block title %}Laporan{% endblock %}
 {% block body %}
-<h1>Laporan</h1>
+<div class="page-head"><div><h1>Laporan</h1><p class="sub">Penjualan, laba, dan kontrol kas</p></div></div>
 <form class="toolbar" method="get" action="/owner/reports">
   <div class="field"><label for="from">Dari</label><input id="from" type="date" name="from" value="{{ from }}"></div>
   <div class="field"><label for="to">Sampai</label><input id="to" type="date" name="to" value="{{ to }}"></div>

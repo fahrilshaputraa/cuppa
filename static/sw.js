@@ -1,8 +1,8 @@
 // Cuppa service worker. Caches only public static assets and an offline notice.
 // Authenticated pages (orders, money, staff) are NEVER cached, so a shared tablet leaks nothing.
-const VERSION = "cuppa-v1";
+const VERSION = "cuppa-v2";
 const SHELL = [
-  "/static/css/app.css", "/static/css/tokens.css", "/static/js/app.js",
+  "/static/css/app.css", "/static/css/shell.css", "/static/css/tokens.css", "/static/js/app.js",
   "/static/vendor/htmx.min.js", "/static/vendor/htmx-sse.js",
   "/static/fonts/figtree-latin-wght-normal.woff2",
   "/static/icons/icon-192.png", "/static/manifest.webmanifest", "/offline"

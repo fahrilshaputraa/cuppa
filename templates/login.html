@@ -1,14 +1,22 @@
 {% extends "base.html" %}
 {% block title %}Masuk{% endblock %}
 {% block shell %}
-<div class="login"><form class="panel" method="post" action="/login" autocomplete="off">
-  <div class="brand">cup<span>pa</span></div>
-  <p class="muted">{{ ctx.outlet }}</p>
-  {% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
-  <div class="field"><label for="name">Nama</label><input id="name" name="name" required maxlength="60" autofocus></div>
-  <div class="field"><label for="secret">PIN atau kata sandi</label><input id="secret" name="secret" type="password" required maxlength="128" autocomplete="current-password"></div>
-  <details class="inline-details" {% if need_code %}open{% endif %}><summary class="muted small">Kode 2FA (owner)</summary>
-    <div class="field"><label for="code">Kode 6 digit</label><input id="code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" {% if need_code %}autofocus{% endif %}></div></details>
-  <button class="btn primary" type="submit">Masuk</button>
-</form></div>
+<div class="auth">
+  <aside class="auth-art" aria-hidden="true">
+    <div class="auth-lock"><span class="lock-c">{% include "_mark.html" %}</span>uppa</div>
+    <div class="auth-copy"><h2>Seduh.<br>Catat.<br>Lunas.</h2><p>Satu meja kasir yang tenang untuk kafe kecil.</p></div>
+    <small>Cuppa · AGPL-3.0</small>
+  </aside>
+  <div class="auth-pane">
+    <form class="auth-form" method="post" action="/login" autocomplete="off">
+      <div class="auth-head"><span class="sw-mark">{% include "_mark.html" %}</span><div><h1>Masuk</h1><p class="muted">{{ ctx.outlet }}</p></div></div>
+      {% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
+      <div class="field"><label for="name">Nama</label><input id="name" name="name" required maxlength="60" autofocus></div>
+      <div class="field"><label for="secret">PIN atau kata sandi</label><input id="secret" name="secret" type="password" required maxlength="128" autocomplete="current-password"></div>
+      <details class="inline-details" {% if need_code %}open{% endif %}><summary class="muted small">Kode 2FA (owner)</summary>
+        <div class="field"><label for="code">Kode 6 digit</label><input id="code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" {% if need_code %}autofocus{% endif %}></div></details>
+      <button class="btn primary wide" type="submit">Masuk</button>
+    </form>
+  </div>
+</div>
 {% endblock %}

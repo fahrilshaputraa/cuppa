@@ -2,8 +2,7 @@
 {% block title %}Menu{% endblock %}
 {% block shell %}
 <div class="cust">
-  <h1>{{ ctx.outlet }}</h1>
-  <p class="muted">Meja {{ table_label }}</p>
+  <header class="cust-head"><span class="sw-mark">{% include "_mark.html" %}</span><div><h1>{{ ctx.outlet }}</h1><span class="chip">Meja {{ table_label }}</span></div></header>
   {% if !banner.is_empty() %}<div class="banner">{{ banner|safe }}</div>{% endif %}
   {% if let Some(b) = busy %}<div class="notice" role="status">{{ b }}</div>{% endif %}
   {% if !open %}<div class="alert" role="status">Kafe sedang tutup{% if !hours.is_empty() %} · jam buka {{ hours }}{% endif %}. Pesanan belum bisa dikirim.</div>{% endif %}

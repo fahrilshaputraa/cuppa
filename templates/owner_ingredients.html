@@ -18,11 +18,11 @@
 {% if ingredients.is_empty() %}<div class="empty"><strong>Belum ada bahan</strong>Tambah bahan, catat pembelian, lalu isi resep tiap menu</div>{% else %}
 <table class="ledger"><thead><tr><th>Bahan</th><th class="num">Stok</th><th class="num">Harga pokok / satuan</th><th></th></tr></thead><tbody>
 {% for i in ingredients %}<tr><td>{{ i.name }} {% if i.low %}<span class="chip warn">Menipis</span>{% endif %}</td><td class="num">{{ i.stock }} {{ i.unit }}</td><td class="num">{{ i.cost }}</td>
-<td class="row">
+<td><div class="row">
   <details class="inline"><summary class="btn">Beli</summary><form method="post" action="/owner/ingredients/{{ i.id }}/buy" class="row"><input name="qty" type="number" min="1" required placeholder="Jumlah" aria-label="Jumlah dibeli" inputmode="numeric"><input name="total_price" type="number" min="0" required placeholder="Total harga (Rp)" aria-label="Total harga" inputmode="numeric"><button class="btn primary" type="submit">Catat</button></form></details>
   <details class="inline"><summary class="btn">Opname</summary><form method="post" action="/owner/ingredients/{{ i.id }}/opname" class="row"><input name="counted" type="number" min="0" required placeholder="Hitungan fisik" aria-label="Hitungan fisik" inputmode="numeric"><input name="note" placeholder="Catatan" maxlength="120" aria-label="Catatan"><button class="btn primary" type="submit">Simpan</button></form></details>
   <details class="inline"><summary class="btn">Buang</summary><form method="post" action="/owner/ingredients/{{ i.id }}/waste" class="row"><input name="qty" type="number" min="1" required placeholder="Jumlah" aria-label="Jumlah terbuang" inputmode="numeric"><input name="reason" required placeholder="Alasan" maxlength="120" aria-label="Alasan"><button class="btn danger" type="submit">Catat</button></form></details>
-</td></tr>{% endfor %}
+</div></td></tr>{% endfor %}
 </tbody></table>{% endif %}
 </div>
 {% endblock %}

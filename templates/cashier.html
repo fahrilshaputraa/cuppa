@@ -1,7 +1,7 @@
 {% extends "app.html" %}
 {% block title %}Kasir{% endblock %}
 {% block body %}
-<div class="page-head"><h1>Antrean</h1></div>
+<div class="page-head"><div><h1>Antrean</h1><p class="sub">Pesanan QR dan manual yang sedang berjalan</p></div></div>
 <div hx-ext="sse" sse-connect="/events">
   <div id="queue" hx-get="/cashier/queue" hx-trigger="load, sse:orders, every 20s" hx-swap="innerHTML" aria-live="polite">
     <div class="empty">Memuat…</div>

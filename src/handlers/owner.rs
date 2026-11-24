@@ -21,55 +21,62 @@ fn owner(s: &Staff) -> AppResult<()> {
     s.require(&[Role::Owner])
 }
 
-/// Last-N-days sales as an inline SVG: one neutral line, today in the accent. Numbers only, safe to embed.
+/// "Rp1,2jt" / "Rp500rb" for chart axes.
+fn compact_rupiah(n: i64) -> String {
+    if n >= 1_000_000 {
+        let tenths = n / 100_000;
+        if tenths % 10 == 0 {
+            format!("Rp{}jt", tenths / 10)
+        } else {
+            format!("Rp{},{}jt", tenths / 10, tenths % 10)
+        }
+    } else if n >= 1_000 {
+        format!("Rp{}rb", n / 1_000)
+    } else {
+        format!("Rp{n}")
+    }
+}
+
+/// Last-N-days sales as an inline SVG bar chart: neutral bars, today in the accent, mono axis labels.
+/// Numbers and fixed markup only, so it is safe to embed.
 fn sales_chart(points: &[(String, i64)]) -> String {
-    let (w, h, pl, pr, pt, pb) = (640.0_f64, 220.0_f64, 8.0_f64, 8.0_f64, 12.0_f64, 28.0_f64);
-    let max = points.iter().map(|p| p.1).max().unwrap_or(0).max(1) as f64;
-    let n = points.len().max(2) as f64;
-    let x = |i: usize| pl + (w - pl - pr) * i as f64 / (n - 1.0);
-    let y = |v: i64| pt + (h - pt - pb) * (1.0 - v as f64 / max);
+    let (w, h, pl, pr, pt, pb) = (640.0_f64, 240.0_f64, 56.0_f64, 8.0_f64, 12.0_f64, 28.0_f64);
+    let max = points.iter().map(|p| p.1).max().unwrap_or(0).max(1);
+    // Smallest friendly step that needs at most 4 grid intervals, so axis labels are round (Rp50rb, Rp100rb, ...).
+    let step = [
+        50_000, 100_000, 200_000, 250_000, 500_000, 1_000_000, 2_000_000, 5_000_000, 10_000_000, 25_000_000,
+    ]
+    .into_iter()
+    .find(|s| (max + s - 1) / s <= 4)
+    .unwrap_or(50_000_000);
+    let intervals = ((max + step - 1) / step).max(1);
+    let top = step * intervals;
+    let n = points.len().max(1) as f64;
+    let slot = (w - pl - pr) / n;
+    let bw = (slot * 0.62).min(34.0);
+    let y = |v: i64| pt + (h - pt - pb) * (1.0 - v as f64 / top as f64);
     let mut out =
         format!("<svg class=\"chart\" viewBox=\"0 0 {w} {h}\" role=\"img\" aria-label=\"Penjualan per hari\">");
-    for g in 0..=3 {
-        let gy = pt + (h - pt - pb) * g as f64 / 3.0;
-        out.push_str(&format!(
-            "<line class=\"grid-line\" x1=\"{pl}\" x2=\"{}\" y1=\"{gy:.1}\" y2=\"{gy:.1}\"/>",
-            w - pr
-        ));
-    }
-    // smooth path (Catmull-Rom to cubic Bezier)
-    let pts: Vec<(f64, f64)> = points.iter().enumerate().map(|(i, p)| (x(i), y(p.1))).collect();
-    let curve = |from: usize, to: usize| -> String {
-        let mut d = format!("M{:.1} {:.1}", pts[from].0, pts[from].1);
-        for i in from..to {
-            let p0 = pts[i.saturating_sub(1)];
-            let (p1, p2) = (pts[i], pts[i + 1]);
-            let p3 = pts[(i + 2).min(pts.len() - 1)];
-            let (c1x, c1y) = (p1.0 + (p2.0 - p0.0) / 6.0, p1.1 + (p2.1 - p0.1) / 6.0);
-            let (c2x, c2y) = (p2.0 - (p3.0 - p1.0) / 6.0, p2.1 - (p3.1 - p1.1) / 6.0);
-            d.push_str(&format!(
-                " C{c1x:.1} {c1y:.1} {c2x:.1} {c2y:.1} {:.1} {:.1}",
-                p2.0, p2.1
-            ));
-        }
-        d
-    };
-    if pts.len() >= 2 {
-        let last = pts.len() - 1;
-        out.push_str(&format!("<path class=\"series\" d=\"{}\"/>", curve(0, last - 1)));
-        out.push_str(&format!("<path class=\"today\" d=\"{}\"/>", curve(last - 1, last)));
-    }
-    if let Some(l) = pts.last() {
-        out.push_str(&format!(
-            "<circle class=\"dot\" cx=\"{:.1}\" cy=\"{:.1}\" r=\"4\"/>",
-            l.0, l.1
-        ));
+    for g in 0..=intervals {
+        let v = step * g;
+        let gy = y(v);
+        out.push_str(&format!("<line class=\"grid-line\" x1=\"{pl}\" x2=\"{:.0}\" y1=\"{gy:.1}\" y2=\"{gy:.1}\"/><text x=\"0\" y=\"{:.1}\">{}</text>", w - pr, gy + 3.5, if v == 0 { "0".to_string() } else { compact_rupiah(v) }));
     }
     for (i, p) in points.iter().enumerate() {
+        let x = pl + slot * i as f64 + (slot - bw) / 2.0;
+        let (top_y, base_y) = (y(p.1), y(0));
+        let bh = (base_y - top_y).max(1.5);
+        let class = if i + 1 == points.len() { "bar today" } else { "bar" };
+        out.push_str(&format!(
+            "<rect class=\"{class}\" x=\"{x:.1}\" y=\"{:.1}\" width=\"{bw:.1}\" height=\"{bh:.1}\" rx=\"3\"><title>{} · {}</title></rect>",
+            base_y - bh,
+            p.0,
+            rupiah(p.1)
+        ));
         if i % 3 == 0 || i + 1 == points.len() {
             out.push_str(&format!(
                 "<text x=\"{:.1}\" y=\"{}\" text-anchor=\"middle\">{}</text>",
-                x(i),
+                x + bw / 2.0,
                 h - 8.0,
                 &p.0[8..]
             ));
@@ -130,6 +137,15 @@ pub async fn home(State(st): State<AppState>, staff: Staff) -> AppResult<Respons
     .fetch_all(&st.db)
     .await?;
     let top_max = top.iter().map(|t| t.1).max().unwrap_or(1).max(1);
+    let dir = |now_v: i64, prev: i64| -> &'static str {
+        if prev == 0 || now_v == prev {
+            "flat"
+        } else if now_v > prev {
+            "up"
+        } else {
+            "down"
+        }
+    };
     let delta = |now_v: i64, prev: i64, money: bool| -> String {
         if prev == 0 {
             return "belum ada pembanding kemarin".into();
@@ -152,6 +168,8 @@ pub async fn home(State(st): State<AppState>, staff: Staff) -> AppResult<Respons
         today_label: day.clone(),
         sales: rupiah(sales),
         sales_delta: delta(sales, ysales, true),
+        sales_dir: dir(sales, ysales),
+        orders_dir: dir(paid, ypaid),
         paid_count: paid,
         orders_delta: delta(paid, ypaid, false),
         average: rupiah(if paid > 0 { sales / paid } else { 0 }),
@@ -175,6 +193,13 @@ async fn menu_page(st: &AppState, staff: &Staff, error: Option<String>) -> AppRe
     let items = rows
         .into_iter()
         .map(|r| ItemView {
+            initial: r
+                .name
+                .chars()
+                .next()
+                .map(|c| c.to_uppercase().to_string())
+                .unwrap_or_default(),
+            tone: tone_of(&r.name),
             photo: r.photo,
             stock: r.stock,
             cost: r.cost,

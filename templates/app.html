@@ -1,9 +1,19 @@
 {% extends "base.html" %}
 {% block shell %}
 <div class="shell">
-  <nav class="sidebar" aria-label="Navigasi utama">
-    <div class="brand">cup<span>pa</span></div>
-    <div class="nav">
+  <aside class="sidebar">
+    <details class="switcher">
+      <summary class="sw" aria-label="Menu akun">
+        <span class="sw-mark">{% include "_mark.html" %}</span>
+        <span class="sw-name"><b>{{ ctx.outlet }}</b><span>{{ ctx.user }} · {{ ctx.role_label }}</span></span>
+        <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
+      </summary>
+      <div class="pop">
+        <div class="pop-who"><span class="av" aria-hidden="true">{{ ctx.initial }}</span><span><b>{{ ctx.user }}</b><small>{{ ctx.role_label }}</small></span></div>
+        <form method="post" action="/logout"><button class="btn ghost wide" type="submit">Keluar</button></form>
+      </div>
+    </details>
+    <nav class="nav" aria-label="Navigasi utama">
     {% if ctx.role == "owner" %}
       <div class="nav-label">Kelola</div>
       <a data-i="home" href="/owner" {% if ctx.nav == "home" %}aria-current="page"{% endif %}>Ringkasan</a>
@@ -14,6 +24,7 @@
       <a data-i="ingredients" href="/owner/ingredients" {% if ctx.nav == "ingredients" %}aria-current="page"{% endif %}>Bahan baku</a>
       <a data-i="vouchers" href="/owner/vouchers" {% if ctx.nav == "vouchers" %}aria-current="page"{% endif %}>Voucher</a>
       <a data-i="expenses" href="/owner/expenses" {% if ctx.nav == "expenses" %}aria-current="page"{% endif %}>Biaya</a>
+      <div class="nav-label">Tim dan sistem</div>
       <a data-i="staff" href="/owner/staff" {% if ctx.nav == "staff" %}aria-current="page"{% endif %}>Staf</a>
       <a data-i="devices" href="/owner/devices" {% if ctx.nav == "devices" %}aria-current="page"{% endif %}>Perangkat</a>
       <a data-i="stations" href="/owner/stations" {% if ctx.nav == "stations" %}aria-current="page"{% endif %}>Stasiun</a>
@@ -38,13 +49,18 @@
       <div class="nav-label">Dapur</div>
       <a data-i="kitchen" href="/kitchen" {% if ctx.nav == "kitchen" %}aria-current="page"{% endif %}>Tiket dapur</a>
     {% endif %}
+    </nav>
+    <div class="side-foot">
+      <a data-i="docs" href="https://github.com/fahrilshaputraa/cuppa/blob/main/docs/INSTALL.md" rel="noopener" target="_blank">Panduan</a>
     </div>
-    <div class="me">
-      <div class="av" aria-hidden="true">{{ ctx.initial }}</div>
-      <div class="who"><b>{{ ctx.user }}</b><span>{{ ctx.role_label }}</span></div>
-      <form method="post" action="/logout"><button class="btn ghost" type="submit" aria-label="Keluar">Keluar</button></form>
-    </div>
-  </nav>
-  <main>{% block body %}{% endblock %}</main>
+  </aside>
+  <div class="frame">
+    <header class="crumbs">
+      <span class="crumb-tile">{% include "_mark.html" %}</span>
+      <span class="crumb-path"><span>{{ ctx.outlet }}</span><i aria-hidden="true">/</i><b>{{ ctx.page }}</b></span>
+      <span class="crumb-end">{% if ctx.shift_open %}<span class="chip ok">Shift terbuka</span>{% else %}<span class="chip">Shift belum dibuka</span>{% endif %}</span>
+    </header>
+    <main>{% block body %}{% endblock %}</main>
+  </div>
 </div>
 {% endblock %}

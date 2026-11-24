@@ -26,7 +26,7 @@ impl<E: Into<anyhow::Error>> From<E> for AppError {
 fn page(status: StatusCode, title: &str, msg: &str) -> Response {
     let body = format!(
         "<!doctype html><html lang=\"id\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
-         <title>{title} · Cuppa</title><link rel=\"stylesheet\" href=\"/static/css/app.css\"></head>\
+         <title>{title} · Cuppa</title><link rel=\"stylesheet\" href=\"/static/css/tokens.css\"><link rel=\"stylesheet\" href=\"/static/css/app.css\"><link rel=\"stylesheet\" href=\"/static/css/shell.css\"></head>\
          <body><div class=\"login\"><div class=\"panel\"><h1>{title}</h1><p class=\"muted\">{msg}</p>\
          <a class=\"btn\" href=\"/\">Kembali</a></div></div></body></html>"
     );

@@ -16,6 +16,9 @@ pub struct Ctx {
     pub can_reports: bool,
     pub initial: String,
     pub role_label: &'static str,
+    pub page: &'static str,
+    pub shift_open: bool,
+    pub v: String,
 }
 
 impl Ctx {
@@ -24,6 +27,10 @@ impl Ctx {
         c.role = s.role.as_str().into();
         c.user = s.name.clone();
         c.nav = nav;
+        c.page = nav_label(nav);
+        c.shift_open = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM shifts WHERE closed_at IS NULL)")
+            .fetch_one(&st.db)
+            .await?;
         c.can_reports = s.can(crate::auth::Perm::Reports);
         c.initial = s
             .name
@@ -54,6 +61,9 @@ impl Ctx {
             can_reports: false,
             initial: String::new(),
             role_label: "",
+            page: "",
+            shift_open: false,
+            v: st.asset_v.to_string(),
         })
     }
 }
@@ -84,6 +94,8 @@ pub struct OwnerHome {
     pub today_label: String,
     pub sales: String,
     pub sales_delta: String,
+    pub sales_dir: &'static str,
+    pub orders_dir: &'static str,
     pub paid_count: i64,
     pub orders_delta: String,
     pub average: String,
@@ -113,6 +125,8 @@ pub struct ItemRow {
     pub photo: Option<String>,
 }
 pub struct ItemView {
+    pub initial: String,
+    pub tone: u8,
     pub photo: Option<String>,
     pub cost: i64,
     pub stock: Option<i64>,
@@ -761,4 +775,44 @@ pub struct AppearancePage {
     pub notice: Option<String>,
     pub css: String,
     pub html: String,
+}
+
+/// Page title shown in the breadcrumb bar, keyed by the nav id.
+pub fn nav_label(nav: &str) -> &'static str {
+    match nav {
+        "home" => "Ringkasan",
+        "reports" => "Laporan",
+        "ledger" => "Buku besar",
+        "menu" => "Menu",
+        "tables" => "Meja dan QR",
+        "ingredients" => "Bahan baku",
+        "vouchers" => "Voucher",
+        "expenses" => "Biaya",
+        "staff" => "Staf",
+        "devices" => "Perangkat",
+        "stations" => "Stasiun",
+        "customers" => "Pelanggan",
+        "security" => "Keamanan akun",
+        "integrations" => "Integrasi",
+        "api" => "API",
+        "appearance" => "Tampilan",
+        "settings" => "Pengaturan",
+        "audit" => "Log audit",
+        "cashier" => "Antrean",
+        "floor" => "Denah meja",
+        "new" => "Pesanan baru",
+        "history" => "Riwayat",
+        "reservations" => "Reservasi",
+        "shift" => "Shift",
+        "kitchen" => "Tiket dapur",
+        _ => "",
+    }
+}
+
+/// Soft tile colour index (0..5) from a name, so a menu item always keeps the same tile.
+pub fn tone_of(name: &str) -> u8 {
+    (name
+        .bytes()
+        .fold(0u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32))
+        % 5) as u8
 }

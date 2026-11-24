@@ -1,7 +1,7 @@
 {% extends "app.html" %}
 {% block title %}Log audit{% endblock %}
 {% block body %}
-<h1>Log audit</h1>
+<div class="page-head"><div><h1>Log audit</h1><p class="sub">Siapa melakukan apa dan kapan</p></div></div>
 <div class="panel">
 {% if rows.is_empty() %}<div class="empty"><strong>Belum ada catatan</strong></div>{% else %}
 <table class="ledger"><thead><tr><th>Waktu</th><th>Pelaku</th><th>Aksi</th><th>Entitas</th><th>Alasan</th></tr></thead><tbody>

@@ -1,9 +1,9 @@
 {% extends "app.html" %}
 {% block title %}Denah meja{% endblock %}
 {% block body %}
-<div class="page-head"><h1>Denah meja</h1></div>
+<div class="page-head"><div><h1>Denah meja</h1><p class="sub">Meja kosong dan terisi</p></div></div>
 {% if tiles.is_empty() %}<div class="panel empty"><strong>Belum ada meja</strong>Tambahkan meja di Meja dan QR</div>{% else %}
 <div class="floor">
-{% for t in tiles %}{% if t.link.is_empty() %}<div class="tile free"><strong>{{ t.label }}</strong><span class="muted small">Kosong</span></div>{% else %}<a class="tile busy" href="{{ t.link }}"><strong>{{ t.label }}</strong><span class="small">{{ t.count }} pesanan</span><span class="small">{{ t.total }}</span>{% if t.call %}<span class="chip warn">Memanggil</span>{% endif %}</a>{% endif %}{% endfor %}
+{% for t in tiles %}{% if t.link.is_empty() %}<div class="ftile free"><strong>{{ t.label }}</strong><span class="muted small">Kosong</span></div>{% else %}<a class="ftile busy" href="{{ t.link }}"><strong>{{ t.label }}</strong><span class="small">{{ t.count }} pesanan</span><span class="small">{{ t.total }}</span>{% if t.call %}<span class="chip warn">Memanggil</span>{% endif %}</a>{% endif %}{% endfor %}
 </div>{% endif %}
 {% endblock %}

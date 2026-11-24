@@ -1,7 +1,7 @@
 {% extends "app.html" %}
 {% block title %}Shift{% endblock %}
 {% block body %}
-<h1>Shift</h1>
+<div class="page-head"><div><h1>Shift</h1><p class="sub">Kas awal, pergerakan kas, dan penutupan</p></div></div>
 {% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
 {% if let Some(r) = report %}
   <div class="panel"><h3>Laporan Z</h3>

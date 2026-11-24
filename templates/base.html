@@ -9,11 +9,13 @@
 <meta name="theme-color" content="#a8481f">
 <link rel="icon" href="/static/icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
-<link rel="stylesheet" href="/static/css/app.css">
-{% if ctx.role.is_empty() %}<link rel="stylesheet" href="/custom.css">{% endif %}
-<script src="/static/vendor/htmx.min.js" defer></script>
-<script src="/static/vendor/htmx-sse.js" defer></script>
-<script src="/static/js/app.js" defer></script>
+<link rel="stylesheet" href="/static/css/tokens.css?v={{ ctx.v }}">
+<link rel="stylesheet" href="/static/css/app.css?v={{ ctx.v }}">
+<link rel="stylesheet" href="/static/css/shell.css?v={{ ctx.v }}">
+{% if ctx.role.is_empty() %}<link rel="stylesheet" href="/custom.css?v={{ ctx.v }}">{% endif %}
+<script src="/static/vendor/htmx.min.js?v={{ ctx.v }}" defer></script>
+<script src="/static/vendor/htmx-sse.js?v={{ ctx.v }}" defer></script>
+<script src="/static/js/app.js?v={{ ctx.v }}" defer></script>
 </head>
 <body class="theme-{{ ctx.theme }}" {% if !ctx.role.is_empty() %}data-idle="600"{% endif %}>
 {% block shell %}{% endblock %}

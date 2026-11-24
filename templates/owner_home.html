@@ -1,10 +1,10 @@
 {% extends "app.html" %}
 {% block title %}Ringkasan{% endblock %}
 {% block body %}
-<div class="page-head"><h1>Ringkasan</h1><span class="muted">{{ today_label }} · shift {% if shift_open %}terbuka{% else %}belum dibuka{% endif %}</span></div>
+<div class="page-head"><div><h1>Ringkasan</h1><p class="sub">Penjualan, pesanan, dan menu terlaris hari ini</p></div><span class="muted mono">{{ today_label }}</span></div>
 <div class="stat-row">
-  <div class="panel stat"><div class="label">Penjualan hari ini</div><div class="value">{{ sales }}</div><div class="delta">{{ sales_delta }}</div></div>
-  <div class="panel stat"><div class="label">Pesanan dibayar</div><div class="value">{{ paid_count }}</div><div class="delta">{{ orders_delta }}</div></div>
+  <div class="panel stat"><div class="label">Penjualan hari ini</div><div class="value">{{ sales }}</div><div class="delta {{ sales_dir }}">{{ sales_delta }}</div></div>
+  <div class="panel stat"><div class="label">Pesanan dibayar</div><div class="value">{{ paid_count }}</div><div class="delta {{ orders_dir }}">{{ orders_delta }}</div></div>
   <div class="panel stat"><div class="label">Rata-rata per pesanan</div><div class="value">{{ average }}</div></div>
   <div class="panel stat"><div class="label">Void</div><div class="value">{{ void_count }}</div></div>
 </div>

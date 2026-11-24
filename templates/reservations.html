@@ -21,7 +21,7 @@
 <table class="ledger"><thead><tr><th>Waktu</th><th>Nama</th><th class="num">Tamu</th><th class="num">Uang muka</th><th>Status</th><th></th></tr></thead><tbody>
 {% for r in rows %}<tr><td>{{ r.when }}</td><td>{{ r.name }}{% if !r.phone.is_empty() %}<div class="muted small">{{ r.phone }}</div>{% endif %}{% if !r.note.is_empty() %}<div class="muted small">{{ r.note }}</div>{% endif %}</td><td class="num">{{ r.pax }}</td><td class="num">{{ r.deposit }}</td>
 <td>{% if r.status == "arrived" %}<span class="chip ok">{{ r.status_label }}</span>{% else if r.status == "cancelled" %}<span class="chip danger">{{ r.status_label }}</span>{% else %}<span class="chip warn">{{ r.status_label }}</span>{% endif %}</td>
-<td class="row">{% if r.status == "booked" %}<form method="post" action="/reservations/{{ r.id }}/status"><input type="hidden" name="status" value="arrived"><button class="btn" type="submit">Hadir</button></form><form method="post" action="/reservations/{{ r.id }}/status"><input type="hidden" name="status" value="cancelled"><button class="btn danger" type="submit">Batalkan</button></form>{% endif %}</td></tr>{% endfor %}
+<td><div class="row">{% if r.status == "booked" %}<form method="post" action="/reservations/{{ r.id }}/status"><input type="hidden" name="status" value="arrived"><button class="btn" type="submit">Hadir</button></form><form method="post" action="/reservations/{{ r.id }}/status"><input type="hidden" name="status" value="cancelled"><button class="btn danger" type="submit">Batalkan</button></form>{% endif %}</div></td></tr>{% endfor %}
 </tbody></table>{% endif %}
 </div>
 {% endblock %}

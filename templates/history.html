@@ -1,7 +1,7 @@
 {% extends "app.html" %}
 {% block title %}Riwayat{% endblock %}
 {% block body %}
-<h1>Riwayat pesanan</h1>
+<div class="page-head"><div><h1>Riwayat pesanan</h1><p class="sub">Cari berdasarkan nomor atau meja</p></div></div>
 <form class="toolbar" method="get" action="/cashier/history">
   <div class="field"><label for="day">Tanggal</label><input id="day" type="date" name="day" value="{{ day }}"></div>
   <div class="field"><label for="q">Cari nomor / meja</label><input id="q" name="q" value="{{ q }}" maxlength="20" inputmode="search"></div>

@@ -1,7 +1,7 @@
 {% extends "app.html" %}
 {% block title %}Pengaturan{% endblock %}
 {% block body %}
-<h1>Pengaturan</h1>
+<div class="page-head"><div><h1>Pengaturan</h1><p class="sub">Pajak, alur, printer, dan operasional</p></div></div>
 {% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
 {% if let Some(n) = notice %}<div class="notice" role="status">{{ n }}</div>{% endif %}
 <form class="panel" method="post" action="/owner/settings">

@@ -3,6 +3,28 @@
 Source of truth for every screen. Tokens live in `static/css/tokens.css`; never hardcode a value that has a token.
 Fonts, icons and every asset are self-hosted (strict CSP, works offline).
 
+## Brand
+
+![Cuppa brand kit](docs/brand/brandkit.png)
+
+**Name.** *Cuppa* is the everyday word for a cup. The brand lives in that cup.
+
+**Logo.** The initial **C** *is* a coffee cup seen from above: the thick ring is the rim, the open side is where the handle sits, and the disc inside is the crema. One mark, two readings (a letter and an object), built from two circles and a 38° opening (`static/brand/mark.svg`, construction on board panel 02). In the wordmark the mark replaces the first letter, so the word reads *Cuppa* and the cup is already in it.
+
+**Palette.** Espresso `#1E1A17` (ink), Crema `#F3E6D3`, Copper `#A8481F` (the single accent), Uap `#F6F5F3` (paper), Daun `#2E7350` (meaning: paid/ok). Proportion 60 / 30 / 10.
+
+**Voice.** Short, calm, concrete. Tagline: *Seduh. Catat. Lunas.* (brew, record, paid).
+
+**Image direction.** Cups from above, halftone, warm dark. No stock people, no neon.
+
+**Assets.** `static/brand/mark*.svg`, `static/brand/board.html` (the board, regenerate the PNG by opening it at 1560 px wide), PWA icons in `static/icons/` rendered from the same geometry.
+
+## App shell (reference-driven)
+
+A quiet sidebar on the page colour with an account switcher on top, one rounded white frame for content, a breadcrumb bar with the shift state, stat cards with a delta arrow, bar charts with mono axes, mono table headers, soft-tint status chips and initial tiles. Radii: controls 10, cards 14, frame 16. Shadows are layered hairlines. Motion follows the Emil/better-ui rules: press scale 0.96 at 150 ms ease-out, `cubic-bezier(.23,1,.32,1)`, only `transform`/`opacity`/colour, hover effects only on hover-capable pointers, everything gated by `prefers-reduced-motion`.
+
+Static assets carry `?v=<boot time>` so a new release is never served from a stale cache or the service worker.
+
 ## Direction
 
 - **Product.** Cuppa is a self-hosted POS and QR ordering app for small Indonesian cafés, used by cashiers on tablets, owners on laptops and customers on phones.
@@ -40,7 +62,7 @@ Figtree (variable, self-hosted, OFL) for the interface; system mono for receipts
 
 ## Space, shape, motion
 
-4px grid (`4 8 12 16 24 32 48`). Radius: controls 8, cards 12. Depth is hairlines, not shadows (only the receipt, a physical object, has one).
+4px grid (`4 8 12 16 24 32 48`). Radius: controls 10, cards 14, frame 16. Depth is hairlines, not shadows (only the receipt, a physical object, has one).
 Motion is 120ms color/transform feedback on one easing curve. Nothing loops. `prefers-reduced-motion` is respected.
 
 ## Screens

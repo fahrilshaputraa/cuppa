@@ -1,4 +1,5 @@
-<h1 align="center">cuppa</h1>
+<p align="center"><img src="static/brand/mark.svg" width="72" alt="Cuppa logo: a C that is a coffee cup seen from above"></p>
+<h1 align="center">Cuppa</h1>
 <p align="center"><b>Self-hosted POS and QR ordering for small cafés.</b><br>One Rust binary · SQLite · no per-month fee · secure by default.</p>
 
 <p align="center">
@@ -8,6 +9,8 @@
 </p>
 
 > **Status: early development (v0.1).** The money path works end to end and is tested; many PRD items are still ahead (see [Roadmap](#roadmap)). Not yet validated in a real café.
+
+![Cuppa brand kit](docs/brand/brandkit.png)
 
 ## Why
 

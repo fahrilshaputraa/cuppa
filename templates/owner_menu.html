@@ -1,7 +1,7 @@
 {% extends "app.html" %}
 {% block title %}Menu{% endblock %}
 {% block body %}
-<h1>Menu</h1>
+<div class="page-head"><div><h1>Menu</h1><p class="sub">Harga, stok, varian, dan foto</p></div></div>
 {% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
 <div class="grid cols-2">
   <form class="panel" method="post" action="/owner/categories">
@@ -22,14 +22,14 @@
   <div class="empty"><strong>Belum ada menu</strong>Tambah kategori lalu menu pertama di atas.</div>
 {% else %}
 <table class="ledger">
-  <thead><tr><th>Menu</th><th>Kategori</th><th class="num">Harga</th><th class="num">Stok</th><th>Status</th><th></th></tr></thead>
+  <thead><tr><th>Menu</th><th class="num">Harga</th><th class="num">Stok</th><th>Status</th><th></th></tr></thead>
   <tbody>
   {% for i in items %}
     <tr>
-      <td class="row">{% if let Some(ph) = i.photo %}<img class="thumb sm" src="/uploads/{{ ph }}" alt="" width="40" height="40" loading="lazy">{% endif %}{{ i.name }}</td><td class="muted">{{ i.category }}</td><td class="num">{{ i.price_fmt }}</td>
+      <td><div class="row nowrap">{% if let Some(ph) = i.photo %}<img class="thumb sm" src="/uploads/{{ ph }}" alt="" width="40" height="40" loading="lazy">{% else %}<span class="tile tone{{ i.tone }}" aria-hidden="true">{{ i.initial }}</span>{% endif %}<span class="two"><b>{{ i.name }}</b><small>{{ i.category }}</small></span></div></td><td class="num">{{ i.price_fmt }}</td>
       <td class="num">{% if let Some(s) = i.stock %}{{ s }}{% else %}<span class="muted">—</span>{% endif %}</td>
       <td>{% if i.available == 0 %}<span class="chip warn">Habis</span>{% else if i.active == 0 %}<span class="chip neutral">Nonaktif</span>{% else %}<span class="chip ok">Tersedia</span>{% endif %}</td>
-      <td class="row">
+      <td><div class="row">
         <details class="inline"><summary class="btn">Ubah</summary>
           <form method="post" action="/owner/items/{{ i.id }}" class="row">
             <input name="name" value="{{ i.name }}" required maxlength="80" aria-label="Nama">
@@ -44,7 +44,7 @@
         <a class="btn" href="/owner/items/{{ i.id }}/prices">Harga jam</a>
         <form method="post" action="/owner/items/{{ i.id }}/available"><button class="btn" type="submit">{% if i.available == 0 %}Tersedia{% else %}Tandai habis{% endif %}</button></form>
         <form method="post" action="/owner/items/{{ i.id }}/active"><button class="btn" type="submit">{% if i.active == 0 %}Aktifkan{% else %}Nonaktifkan{% endif %}</button></form>
-      </td>
+      </div></td>
     </tr>
   {% endfor %}
   </tbody>

@@ -1,15 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Pasang Cuppa{% endblock %}
 {% block shell %}
-<div class="login"><form class="panel" method="post" action="/setup" autocomplete="off">
-  <div class="brand">cup<span>pa</span></div>
-  <h2>Pasang Cuppa</h2>
+<div class="auth"><aside class="auth-art" aria-hidden="true"><div class="auth-lock"><span class="lock-c">{% include "_mark.html" %}</span>uppa</div><div class="auth-copy"><h2>Selamat<br>datang.</h2><p>Buat akun owner pertama, lalu atur kafe Anda dalam beberapa menit.</p></div><small>Cuppa · AGPL-3.0</small></aside><div class="auth-pane"><form class="auth-form" method="post" action="/setup" autocomplete="off">
+  <div class="auth-head"><span class="sw-mark">{% include "_mark.html" %}</span><div><h1>Pasang Cuppa</h1></div></div>
   <p class="muted">Buat akun owner pertama. Kode pemasangan ada di log server saat Cuppa dijalankan</p>
   {% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
   <div class="field"><label for="code">Kode pemasangan</label><input id="code" name="code" required maxlength="64" autocomplete="off"></div>
   <div class="field"><label for="outlet">Nama kafe</label><input id="outlet" name="outlet" required maxlength="60"></div>
   <div class="field"><label for="name">Nama owner</label><input id="name" name="name" required maxlength="60"></div>
   <div class="field"><label for="secret">Kata sandi (min. 8 karakter)</label><input id="secret" name="secret" type="password" required minlength="8" maxlength="128" autocomplete="new-password"></div>
-  <button class="btn primary" type="submit">Pasang</button>
-</form></div>
+  <button class="btn primary wide" type="submit">Pasang</button>
+</form></div></div>
 {% endblock %}

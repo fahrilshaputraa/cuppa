@@ -10,6 +10,7 @@
   </div></div>
 {% if let Some(ok) = sent %}<div class="{% if ok %}notice{% else %}alert{% endif %} no-print" role="status">{% if ok %}Struk dikirim ke printer.{% else %}Printer tidak merespons. Periksa kabel/jaringan lalu coba lagi, atau cetak lewat browser.{% endif %}</div>{% endif %}
 <div class="receipt">
+  <span class="rc-mark">{% include "_mark.html" %}</span>
   <h2>{{ d.outlet }}</h2>
   <div class="center">#{{ d.number }} · {{ d.where_label }}<br>{{ d.when }}</div>
   <hr>
