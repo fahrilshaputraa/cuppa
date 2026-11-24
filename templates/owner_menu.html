@@ -1,57 +1,55 @@
 {% extends "app.html" %}
 {% block title %}Menu{% endblock %}
 {% block body %}
-<div class="page-head"><div><h1>Menu</h1><p class="sub">Harga, stok, varian, dan foto</p></div></div>
+<div class="page-head"><div><h1>Menu</h1><p class="sub">Foto, harga, stok, varian, dan resep</p></div>
+  <a class="btn primary" href="/owner/items/new"><span class="ic" data-ic="plus" aria-hidden="true"></span>Menu baru</a></div>
 {% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
-<div class="grid cols-2">
-  <form class="panel" method="post" action="/owner/categories">
-    <h3>Kategori baru</h3>
-    <div class="field"><label for="cname">Nama</label><input id="cname" name="name" required maxlength="60"></div>
-    <button class="btn primary" type="submit">Tambah kategori</button>
-  </form>
-  <form class="panel" method="post" action="/owner/items">
-    <h3>Menu baru</h3>
-    <div class="field"><label for="icat">Kategori</label><select id="icat" name="category_id" required>{% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></div>
-    <div class="field"><label for="iname">Nama</label><input id="iname" name="name" required maxlength="80"></div>
-    <div class="field"><label for="iprice">Harga (Rp)</label><input id="iprice" name="price" type="number" min="0" max="100000000" required inputmode="numeric"></div>
-    <button class="btn primary" type="submit">Tambah menu</button>
-  </form>
+<div class="stat-row slim">
+  <div class="panel stat"><div class="label">Semua menu</div><div class="value">{{ n_all }}</div></div>
+  <div class="panel stat"><div class="label">Habis</div><div class="value">{{ n_sold_out }}</div></div>
+  <div class="panel stat"><div class="label">Stok menipis (≤ 5)</div><div class="value">{{ n_low }}</div></div>
 </div>
-<div class="panel">
+<div data-filter>
+<div class="filters">
+  <label class="searchbox"><span class="ic" data-ic="search" aria-hidden="true"></span><input type="search" data-q placeholder="Cari menu" aria-label="Cari menu" autocomplete="off"></label>
+  <div class="cats" role="group" aria-label="Kategori">
+    <button class="cat" type="button" data-cat="" aria-pressed="true">Semua</button>
+    {% for c in categories %}<button class="cat" type="button" data-cat="{{ c.name }}" aria-pressed="false">{{ c.name }}</button>{% endfor %}
+  </div>
+  <details class="inline"><summary class="btn">Kategori baru</summary>
+    <form method="post" action="/owner/categories" class="row"><input name="name" required maxlength="60" placeholder="Nama kategori" aria-label="Nama kategori"><button class="btn primary" type="submit">Tambah</button></form></details>
+</div>
 {% if items.is_empty() %}
-  <div class="empty"><strong>Belum ada menu</strong>Tambah kategori lalu menu pertama di atas.</div>
+  <div class="panel"><div class="empty"><strong>Belum ada menu</strong>Buat kategori, lalu tambahkan menu pertama dengan foto.</div></div>
 {% else %}
-<table class="ledger">
-  <thead><tr><th>Menu</th><th class="num">Harga</th><th class="num">Stok</th><th>Status</th><th></th></tr></thead>
-  <tbody>
+<div class="pgrid">
   {% for i in items %}
-    <tr>
-      <td><div class="row nowrap">{% if let Some(ph) = i.photo %}<img class="thumb sm" src="/uploads/{{ ph }}" alt="" width="40" height="40" loading="lazy">{% else %}<span class="tile tone{{ i.tone }}" aria-hidden="true">{{ i.initial }}</span>{% endif %}<span class="two"><b>{{ i.name }}</b><small>{{ i.category }}</small></span></div></td><td class="num">{{ i.price_fmt }}</td>
-      <td class="num">{% if let Some(s) = i.stock %}{{ s }}{% else %}<span class="muted">—</span>{% endif %}</td>
-      <td>{% if i.available == 0 %}<span class="chip warn">Habis</span>{% else if i.active == 0 %}<span class="chip neutral">Nonaktif</span>{% else %}<span class="chip ok">Tersedia</span>{% endif %}</td>
-      <td><div class="row">
-        <details class="inline"><summary class="btn">Ubah</summary>
-          <form method="post" action="/owner/items/{{ i.id }}" class="row">
-            <input name="name" value="{{ i.name }}" required maxlength="80" aria-label="Nama">
-            <input name="price" type="number" min="0" value="{{ i.price }}" required inputmode="numeric" aria-label="Harga">
-            <input name="cost" type="number" min="0" value="{{ i.cost }}" placeholder="HPP" inputmode="numeric" aria-label="HPP per porsi">
-            <input name="stock" type="number" min="0" value="{% if let Some(s) = i.stock %}{{ s }}{% endif %}" placeholder="Stok (opsional)" inputmode="numeric" aria-label="Stok">
-            <button class="btn primary" type="submit">Simpan</button>
-          </form>
-          <form method="post" action="/owner/items/{{ i.id }}/photo" enctype="multipart/form-data" class="row"><input type="file" name="photo" accept="image/jpeg,image/png,image/webp" required aria-label="Foto menu"><button class="btn" type="submit">Unggah foto</button></form></details>
-        <a class="btn" href="/owner/items/{{ i.id }}/modifiers">Varian</a>
-        <a class="btn" href="/owner/items/{{ i.id }}/recipe">Resep</a>
-        <a class="btn" href="/owner/items/{{ i.id }}/prices">Harga jam</a>
-        <form method="post" action="/owner/items/{{ i.id }}/available"><button class="btn" type="submit">{% if i.available == 0 %}Tersedia{% else %}Tandai habis{% endif %}</button></form>
-        <form method="post" action="/owner/items/{{ i.id }}/active"><button class="btn" type="submit">{% if i.active == 0 %}Aktifkan{% else %}Nonaktifkan{% endif %}</button></form>
-      </div></td>
-    </tr>
+  <article class="pcard {% if i.active == 0 %}off{% endif %}" data-name="{{ i.name }}" data-cat="{{ i.category }}">
+    <div class="pimg tone{{ i.tone }}">
+      {% if let Some(ph) = i.photo %}<img src="/uploads/{{ ph }}" alt="" loading="lazy" width="320" height="240">{% else %}<span class="ph" aria-hidden="true">{{ i.initial }}</span>{% endif %}
+      {% if i.active == 0 %}<span class="badge">Nonaktif</span>{% else if i.available == 0 %}<span class="badge out">Habis</span>{% else if let Some(s) = i.stock %}<span class="badge {% if i.low %}low{% endif %}">Stok {{ s }}</span>{% endif %}
+    </div>
+    <div class="pbody">
+      <b>{{ i.name }}</b><small>{{ i.category }}</small>
+      <div class="pdesc">{{ i.description }}</div>
+      <div class="pprice">{{ i.price_fmt }}</div>
+      <div class="ib-row">
+        <a class="ib" href="/owner/items/{{ i.id }}/edit" title="Ubah menu" aria-label="Ubah {{ i.name }}" data-tip="Ubah"><span class="ic" data-ic="edit"></span></a>
+        <a class="ib" href="/owner/items/{{ i.id }}/modifiers" title="Varian dan tambahan" aria-label="Varian {{ i.name }}" data-tip="Varian"><span class="ic" data-ic="sliders"></span></a>
+        <a class="ib" href="/owner/items/{{ i.id }}/recipe" title="Resep dan HPP" aria-label="Resep {{ i.name }}" data-tip="Resep"><span class="ic" data-ic="recipe"></span></a>
+        <a class="ib" href="/owner/items/{{ i.id }}/prices" title="Harga per jam" aria-label="Harga jam {{ i.name }}" data-tip="Harga jam"><span class="ic" data-ic="clock"></span></a>
+        <form method="post" action="/owner/items/{{ i.id }}/available"><button class="ib {% if i.available == 0 %}on{% endif %}" type="submit" title="{% if i.available == 0 %}Tandai tersedia{% else %}Tandai habis{% endif %}" aria-label="{% if i.available == 0 %}Tandai {{ i.name }} tersedia{% else %}Tandai {{ i.name }} habis{% endif %}" aria-pressed="{% if i.available == 0 %}true{% else %}false{% endif %}" data-tip="{% if i.available == 0 %}Tandai tersedia{% else %}Tandai habis{% endif %}"><span class="ic" data-ic="ban"></span></button></form>
+        <form method="post" action="/owner/items/{{ i.id }}/active"><button class="ib {% if i.active == 0 %}on{% endif %}" type="submit" title="{% if i.active == 0 %}Aktifkan{% else %}Nonaktifkan{% endif %}" aria-label="{% if i.active == 0 %}Aktifkan {{ i.name }}{% else %}Nonaktifkan {{ i.name }}{% endif %}" aria-pressed="{% if i.active == 0 %}true{% else %}false{% endif %}" data-tip="{% if i.active == 0 %}Aktifkan{% else %}Nonaktifkan{% endif %}"><span class="ic" data-ic="power"></span></button></form>
+      </div>
+    </div>
+  </article>
   {% endfor %}
-  </tbody>
-</table>
+  <a class="pcard pcard-new" href="/owner/items/new"><span class="ic" data-ic="plus" aria-hidden="true"></span>Tambah menu</a>
+</div>
+<p class="muted center" data-empty hidden>Tidak ada menu yang cocok.</p>
 {% endif %}
 </div>
-<details class="panel"><summary><strong>Impor dari CSV</strong></summary>
+<details class="panel gap-top"><summary><strong>Impor dari CSV</strong></summary>
   <form method="post" action="/owner/menu/import">
     <p class="muted small">Satu baris per menu: <code>kategori,nama,harga[,stok]</code>. Menu yang sudah ada diperbarui harganya.</p>
     <div class="field"><label for="csv">Data CSV</label><textarea id="csv" name="csv" rows="6" maxlength="60000" placeholder="Kopi,Americano,18000&#10;Kopi,Latte,25000,40"></textarea></div>

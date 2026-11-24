@@ -25,6 +25,10 @@ A quiet sidebar on the page colour with an account switcher on top, one rounded 
 
 Static assets carry `?v=<boot time>` so a new release is never served from a stale cache or the service worker.
 
+## Food-app layer
+
+Menu is shown like an ordering app, not a table: photo cards with description, price and a round add button; tapping opens a detail sheet (photo, description, options). Customer: search, sticky category chips, dark floating cart bar. Cashier: photo grid on the left, order detail panel on the right. Owner: photo cards with stock badge and icon actions (edit, variants, recipe, hourly price, sold out, active), each with a tooltip and an aria-label; one form for photo, description, price, cost (live margin) and stock. Icons live in `static/css/menu.css` as masks from one 24px stroke set. Items without a photo get a tinted initial tile.
+
 ## Direction
 
 - **Product.** Cuppa is a self-hosted POS and QR ordering app for small Indonesian cafés, used by cashiers on tablets, owners on laptops and customers on phones.

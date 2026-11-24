@@ -1,21 +1,34 @@
 {% extends "app.html" %}
 {% block title %}Pesanan baru{% endblock %}
 {% block body %}
-<h1>Pesanan baru</h1>
+<div class="page-head"><div><h1>Pesanan baru</h1><p class="sub">Ketuk menu untuk menambah</p></div></div>
 {% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
-<form method="post" action="/cashier/new" data-cart>
-  <div class="panel">
-  {% if menu.is_empty() %}<div class="empty"><strong>Menu kosong</strong>Minta owner menambah menu.</div>{% endif %}
-  {% for c in menu %}
-    <h3>{{ c.name }}</h3>
-    {% for i in c.items %}
-      {% include "_item_row.html" %}
+<form method="post" action="/cashier/new" data-cart class="pos">
+  <div data-filter>
+    <div class="filters flush">
+      <label class="searchbox"><span class="ic" data-ic="search" aria-hidden="true"></span><input type="search" data-q placeholder="Cari menu" aria-label="Cari menu" autocomplete="off"></label>
+      <div class="cats" role="group" aria-label="Kategori"><button class="cat" type="button" data-cat="" aria-pressed="true">Semua</button>{% for c in menu %}<button class="cat" type="button" data-cat="{{ c.name }}" aria-pressed="false">{{ c.name }}</button>{% endfor %}</div>
+    </div>
+    {% if menu.is_empty() %}<div class="panel"><div class="empty"><strong>Menu kosong</strong>Minta owner menambah menu.</div></div>{% endif %}
+    {% for c in menu %}
+    <section data-section="{{ c.name }}">
+      <h3 class="sec-h">{{ c.name }}</h3>
+      <div class="dgrid">
+      {% for i in c.items %}
+        {% include "_item_row.html" %}
+      {% endfor %}
+      </div>
+    </section>
     {% endfor %}
-  {% endfor %}
+    <p class="muted center" data-empty hidden>Tidak ada menu yang cocok.</p>
   </div>
-  <div class="panel"><div class="field"><label for="ch">Tipe / sumber pesanan</label><select id="ch" name="channel"><option value="dine_in">Makan di tempat</option><option value="takeaway">Bawa pulang</option><option value="gofood">GoFood</option><option value="grabfood">GrabFood</option><option value="shopeefood">ShopeeFood</option></select></div>
-  <div class="field"><label for="tbl">Meja (opsional)</label><select id="tbl" name="table_id"><option value="">Bawa pulang / antre</option>{% for t in tables %}<option value="{{ t.id }}">Meja {{ t.label }}</option>{% endfor %}</select></div>
-  <div class="field"><label for="note">Catatan</label><textarea id="note" name="note" maxlength="200"></textarea></div></div>
-  <div class="total-bar"><div><strong class="value" data-cart-total>Belum ada item</strong><div class="muted small">Subtotal sebelum pajak &amp; layanan</div></div><button class="btn primary" type="submit" data-cart-submit>Simpan pesanan</button></div>
+  <aside class="pos-side" aria-label="Detail pesanan">
+    <h3>Detail pesanan</h3>
+    <ul class="lines" data-lines aria-live="polite"></ul>
+    <div class="field"><label for="ch">Tipe / sumber</label><select id="ch" name="channel"><option value="dine_in">Makan di tempat</option><option value="takeaway">Bawa pulang</option><option value="gofood">GoFood</option><option value="grabfood">GrabFood</option><option value="shopeefood">ShopeeFood</option></select></div>
+    <div class="field"><label for="tbl">Meja (opsional)</label><select id="tbl" name="table_id"><option value="">Bawa pulang / antre</option>{% for t in tables %}<option value="{{ t.id }}">Meja {{ t.label }}</option>{% endfor %}</select></div>
+    <div class="field"><label for="note">Catatan</label><textarea id="note" name="note" rows="2" maxlength="200"></textarea></div>
+    <div class="total-bar"><div><strong class="value" data-cart-total>Belum ada item</strong><div class="muted small">Sebelum pajak &amp; layanan</div></div><button class="btn primary" type="submit" data-cart-submit>Simpan</button></div>
+  </aside>
 </form>
 {% endblock %}

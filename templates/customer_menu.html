@@ -2,20 +2,28 @@
 {% block title %}Menu{% endblock %}
 {% block shell %}
 <div class="cust">
-  <header class="cust-head"><span class="sw-mark">{% include "_mark.html" %}</span><div><h1>{{ ctx.outlet }}</h1><span class="chip">Meja {{ table_label }}</span></div></header>
+  <header class="cust-top"><span class="sw-mark">{% include "_mark.html" %}</span><div><div class="where">Memesan di</div><strong>{{ ctx.outlet }} · Meja {{ table_label }}</strong></div></header>
+  <section class="cust-hero"><span class="rim" aria-hidden="true"></span><h2>Mau minum apa hari ini?</h2><p>Pilih menu, kirim, dan kami antar ke meja Anda.</p></section>
   {% if !banner.is_empty() %}<div class="banner">{{ banner|safe }}</div>{% endif %}
   {% if let Some(b) = busy %}<div class="notice" role="status">{{ b }}</div>{% endif %}
   {% if !open %}<div class="alert" role="status">Kafe sedang tutup{% if !hours.is_empty() %} · jam buka {{ hours }}{% endif %}. Pesanan belum bisa dikirim.</div>{% endif %}
   {% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
   <form method="post" action="/m/{{ token }}/orders" data-cart>
+  <div data-filter>
+  <label class="searchbox"><span class="ic" data-ic="search" aria-hidden="true"></span><input type="search" data-q placeholder="Cari menu" aria-label="Cari menu" autocomplete="off"></label>
+  <div class="cats" role="group" aria-label="Kategori"><button class="cat" type="button" data-cat="" aria-pressed="true">Semua</button>{% for c in menu %}<button class="cat" type="button" data-cat="{{ c.name }}" aria-pressed="false">{{ c.name }}</button>{% endfor %}</div>
   {% for c in menu %}
-    <h2>{{ c.name }}</h2>
+    <section data-section="{{ c.name }}">
+    <h2 class="cat-title">{{ c.name }}</h2>
     {% for i in c.items %}
       {% include "_item_row.html" %}
     {% endfor %}
+    </section>
   {% endfor %}
+  <p class="muted center" data-empty hidden>Tidak ada menu yang cocok.</p>
+  </div>
   {% if menu.is_empty() %}<div class="empty"><strong>Menu belum tersedia</strong>Silakan pesan langsung ke kasir.</div>{% else %}
-  <div class="field"><label for="note">Catatan</label><textarea id="note" name="note" maxlength="200"></textarea></div>
+  <div class="field"><label for="note">Catatan untuk dapur</label><textarea id="note" name="note" maxlength="200" placeholder="Misal: less sugar"></textarea></div>
   <div class="total-bar"><div><strong class="value" data-cart-total>Belum ada item</strong><div class="muted small">Pajak &amp; layanan dihitung saat pesanan dikirim</div></div><button class="btn primary" type="submit" data-cart-submit {% if !open %}disabled data-locked{% endif %}>Kirim pesanan</button></div>
   {% endif %}
   </form>

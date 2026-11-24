@@ -28,7 +28,7 @@ fn owner(s: &Staff) -> AppResult<()> {
 // ---- Photos (FR-02/23) -------------------------------------------------------------------------
 
 /// Decode with hard limits, drop metadata and alpha, shrink and re-encode as JPEG. Never stores the upload as-is.
-fn reencode(bytes: &[u8]) -> Result<Vec<u8>, &'static str> {
+pub fn reencode(bytes: &[u8]) -> Result<Vec<u8>, &'static str> {
     let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes))
         .with_guessed_format()
         .map_err(|_| "File bukan gambar yang valid")?;
@@ -113,7 +113,7 @@ pub async fn photo_upload(
     Ok(Redirect::to("/owner/menu"))
 }
 
-fn valid_upload_name(n: &str) -> bool {
+pub fn valid_upload_name(n: &str) -> bool {
     n.len() == 36
         && n.ends_with(".jpg")
         && n[..32]

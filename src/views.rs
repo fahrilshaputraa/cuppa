@@ -114,6 +114,7 @@ pub struct CategoryRow {
 
 #[derive(sqlx::FromRow)]
 pub struct ItemRow {
+    pub description: Option<String>,
     pub id: String,
     pub name: String,
     pub category: String,
@@ -125,6 +126,8 @@ pub struct ItemRow {
     pub photo: Option<String>,
 }
 pub struct ItemView {
+    pub description: String,
+    pub low: bool,
     pub initial: String,
     pub tone: u8,
     pub photo: Option<String>,
@@ -146,6 +149,40 @@ pub struct OwnerMenu {
     pub error: Option<String>,
     pub categories: Vec<CategoryRow>,
     pub items: Vec<ItemView>,
+    pub n_all: usize,
+    pub n_sold_out: usize,
+    pub n_low: usize,
+}
+
+#[derive(sqlx::FromRow)]
+pub struct ItemFormRow {
+    pub category_id: String,
+    pub name: String,
+    pub description: String,
+    pub price: i64,
+    pub cost: i64,
+    pub stock: Option<i64>,
+    pub photo: Option<String>,
+}
+#[derive(Default)]
+pub struct ItemFormView {
+    pub category_id: String,
+    pub name: String,
+    pub description: String,
+    pub price: String,
+    pub cost: String,
+    pub stock: String,
+    pub photo: Option<String>,
+}
+
+#[derive(Template)]
+#[template(path = "owner_item_form.html")]
+pub struct OwnerItemForm {
+    pub ctx: Ctx,
+    pub error: Option<String>,
+    pub categories: Vec<CategoryRow>,
+    pub id: Option<String>,
+    pub f: ItemFormView,
 }
 
 #[derive(sqlx::FromRow)]
@@ -293,6 +330,7 @@ pub struct KitchenTickets {
 
 #[derive(sqlx::FromRow)]
 pub struct MenuRow {
+    pub description: Option<String>,
     pub photo: Option<String>,
     pub id: String,
     pub name: String,
@@ -302,6 +340,9 @@ pub struct MenuRow {
     pub category: String,
 }
 pub struct MenuItemView {
+    pub description: String,
+    pub initial: String,
+    pub tone: u8,
     pub photo: Option<String>,
     pub groups: Vec<GroupView>,
     pub stock: Option<i64>,

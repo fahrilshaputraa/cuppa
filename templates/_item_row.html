@@ -1,16 +1,29 @@
-<div class="menu-item {% if i.available == 0 %}soldout{% endif %}">
-  {% if let Some(ph) = i.photo %}<img class="thumb" src="/uploads/{{ ph }}" alt="" width="64" height="64" loading="lazy">{% endif %}
-  <div class="mi-main">
-    <strong>{{ i.name }}</strong>
-    <div class="price">{{ i.price_fmt }}</div>
-    {% if i.available == 0 %}<span class="chip warn">Habis</span>{% else if let Some(left) = i.stock %}{% if *left <= 5 %}<span class="chip neutral">Sisa {{ left }}</span>{% endif %}{% endif %}
-    {% if i.available == 1 %}{% for g in i.groups %}
-    <fieldset class="mods"><legend>{{ g.name }}{% if g.required %} <span class="req">wajib</span>{% else %} <span class="muted">opsional</span>{% endif %}</legend>
-      {% if g.max_select == 1 && !g.required %}<label class="opt"><input type="radio" name="mod_{{ i.id }}__{{ g.id }}" value="" checked> Tanpa</label>{% endif %}
-      {% for m in g.mods %}<label class="opt"><input type="{% if g.max_select == 1 %}radio{% else %}checkbox{% endif %}" name="mod_{{ i.id }}__{{ g.id }}" value="{{ m.id }}" data-price="{{ m.price }}">{{ m.name }} <span class="price">{{ m.price_fmt }}</span></label>{% endfor %}
-    </fieldset>
-    {% endfor %}{% endif %}
+<article class="dish tone{{ i.tone }} {% if i.available == 0 %}soldout{% endif %}" data-name="{{ i.name }}" data-cat="{{ c.name }}" {% if !i.groups.is_empty() %}data-opts{% endif %}>
+  <button class="dimg pimg tone{{ i.tone }}" type="button" data-open aria-label="Detail {{ i.name }}">{% if let Some(ph) = i.photo %}<img src="/uploads/{{ ph }}" alt="" loading="lazy" width="192" height="192">{% else %}<span class="ph" aria-hidden="true">{{ i.initial }}</span>{% endif %}</button>
+  <div class="dmain">
+    <div class="dtags">{% if i.available == 0 %}<span class="chip warn">Habis</span>{% else if let Some(left) = i.stock %}{% if *left <= 5 %}<span class="chip warn">Sisa {{ left }}</span>{% endif %}{% endif %}</div>
+    <button class="dname" type="button" data-open>{{ i.name }}</button>
+    {% if !i.description.is_empty() %}<div class="ddesc">{{ i.description }}</div>{% endif %}
+    <div class="dfoot">
+      <span class="dprice">{{ i.price_fmt }}</span>
+      <div class="stepper"><button class="btn step" type="button" data-step="-1" aria-label="Kurangi {{ i.name }}"><span class="ic" data-ic="minus" aria-hidden="true"></span></button><input class="qty" type="number" min="0" max="99" value="0" name="qty_{{ i.id }}" data-price="{{ i.price }}" aria-label="Jumlah {{ i.name }}" inputmode="numeric" {% if i.available == 0 %}disabled{% endif %}><button class="btn step" type="button" data-step="1" aria-label="Tambah {{ i.name }}" {% if i.available == 0 %}disabled{% endif %}><span class="ic" data-ic="plus" aria-hidden="true"></span></button></div>
+    </div>
+    {% if can_sold_out %}<button class="ib sold-btn" type="submit" formaction="/menu/{{ i.id }}/available" formnovalidate title="Tandai habis / tersedia" aria-label="Tandai {{ i.name }} habis atau tersedia"><span class="ic" data-ic="ban"></span></button>{% endif %}
   </div>
-  <div class="stepper"><button class="btn step" type="button" data-step="-1" aria-label="Kurangi {{ i.name }}">−</button><input class="qty" type="number" min="0" max="99" value="0" name="qty_{{ i.id }}" data-price="{{ i.price }}" aria-label="Jumlah {{ i.name }}" inputmode="numeric" {% if i.available == 0 %}disabled{% endif %}><button class="btn step" type="button" data-step="1" aria-label="Tambah {{ i.name }}" {% if i.available == 0 %}disabled{% endif %}>+</button>
-  {% if can_sold_out %}<button class="btn" type="submit" formaction="/menu/{{ i.id }}/available" formnovalidate title="Tandai habis / tersedia">{% if i.available == 0 %}Tersedia{% else %}Habis{% endif %}</button>{% endif %}</div>
-</div>
+  <dialog class="sheet" aria-label="{{ i.name }}">
+    <div class="sheet-img pimg tone{{ i.tone }}">{% if let Some(ph) = i.photo %}<img src="/uploads/{{ ph }}" alt="">{% else %}<span class="ph" aria-hidden="true">{{ i.initial }}</span>{% endif %}<button class="sheet-x" type="button" data-close aria-label="Tutup"><span class="ic" data-ic="x" aria-hidden="true"></span></button></div>
+    <div class="sheet-body">
+      <h3>{{ i.name }}</h3>
+      <div class="sprice">{{ i.price_fmt }}</div>
+      {% if !i.description.is_empty() %}<p class="sdesc">{{ i.description }}</p>{% endif %}
+      {% if i.available == 1 %}{% for g in i.groups %}
+      <fieldset class="mods"><legend>{{ g.name }}{% if g.required %} <span class="req">wajib</span>{% else %} <span class="muted">opsional</span>{% endif %}</legend>
+        {% if g.max_select == 1 && !g.required %}<label class="opt"><input type="radio" name="mod_{{ i.id }}__{{ g.id }}" value="" checked> Tanpa</label>{% endif %}
+        {% for m in g.mods %}<label class="opt"><input type="{% if g.max_select == 1 %}radio{% else %}checkbox{% endif %}" name="mod_{{ i.id }}__{{ g.id }}" value="{{ m.id }}" data-price="{{ m.price }}">{{ m.name }} <span class="price">{{ m.price_fmt }}</span></label>{% endfor %}
+      </fieldset>
+      {% endfor %}
+      <button class="btn primary sheet-cta" type="button" data-add>Tambah ke pesanan</button>
+      {% else %}<p class="muted">Menu ini sedang habis.</p>{% endif %}
+    </div>
+  </dialog>
+</article>

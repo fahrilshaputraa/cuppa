@@ -29,7 +29,8 @@ use axum::{
 };
 use futures_util::Stream;
 use handlers::{
-    admin, cashier, customer, extras, gateway, inventory, more, ops, orders, owner, public, receipt, reports, session,
+    admin, cashier, customer, extras, gateway, inventory, items, more, ops, orders, owner, public, receipt, reports,
+    session,
 };
 use sqlx::SqlitePool;
 use std::{
@@ -182,6 +183,18 @@ pub fn router(st: AppState) -> Router {
         .route("/owner/menu", get(owner::menu))
         .route("/owner/categories", post(owner::add_category))
         .route("/owner/items", post(owner::add_item))
+        .route(
+            "/owner/items/new",
+            get(items::new_get)
+                .post(items::create)
+                .layer(DefaultBodyLimit::max(4 * 1024 * 1024)),
+        )
+        .route(
+            "/owner/items/{id}/edit",
+            get(items::edit_get)
+                .post(items::update)
+                .layer(DefaultBodyLimit::max(4 * 1024 * 1024)),
+        )
         .route("/owner/items/{id}/available", post(owner::toggle_available))
         .route("/owner/items/{id}/active", post(owner::toggle_active))
         .route("/owner/tables", get(owner::tables).post(owner::add_table))

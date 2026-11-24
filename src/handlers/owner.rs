@@ -188,11 +188,13 @@ async fn menu_page(st: &AppState, staff: &Staff, error: Option<String>) -> AppRe
             .fetch_all(&st.db)
             .await?;
     let rows: Vec<ItemRow> = sqlx::query_as(
-        "SELECT m.id, m.name, c.name AS category, m.price, m.active, m.available, m.stock, m.cost, m.photo FROM menu_items m JOIN categories c ON c.id = m.category_id ORDER BY c.name, m.name",
+        "SELECT m.id, m.name, m.description, c.name AS category, m.price, m.active, m.available, m.stock, m.cost, m.photo FROM menu_items m JOIN categories c ON c.id = m.category_id ORDER BY c.name, m.name",
     ).fetch_all(&st.db).await?;
-    let items = rows
+    let items: Vec<ItemView> = rows
         .into_iter()
         .map(|r| ItemView {
+            description: r.description.unwrap_or_default(),
+            low: matches!(r.stock, Some(s) if s <= 5),
             initial: r
                 .name
                 .chars()
@@ -216,6 +218,9 @@ async fn menu_page(st: &AppState, staff: &Staff, error: Option<String>) -> AppRe
         ctx: Ctx::staff(st, staff, "menu").await?,
         error,
         categories,
+        n_all: items.len(),
+        n_sold_out: items.iter().filter(|i| i.available == 0).count(),
+        n_low: items.iter().filter(|i| i.low && i.available == 1).count(),
         items,
     })?
     .into_response())

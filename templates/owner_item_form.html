@@ -1,0 +1,34 @@
+{% extends "app.html" %}
+{% block title %}{% if id.is_some() %}Ubah menu{% else %}Menu baru{% endif %}{% endblock %}
+{% block body %}
+<div class="page-head"><div><a class="muted small" href="/owner/menu"><span class="ic" data-ic="back" aria-hidden="true"></span> Menu</a>
+  <h1>{% if id.is_some() %}Ubah menu{% else %}Menu baru{% endif %}</h1></div></div>
+{% if let Some(e) = error %}<div class="alert" role="alert">{{ e }}</div>{% endif %}
+{% if categories.is_empty() %}<div class="alert" role="status">Belum ada kategori. <a href="/owner/menu">Buat kategori dulu</a>.</div>{% endif %}
+<form method="post" enctype="multipart/form-data" action="{% if let Some(i) = id %}/owner/items/{{ i }}/edit{% else %}/owner/items/new{% endif %}">
+<div class="iform">
+  <div>
+    <label class="drop {% if f.photo.is_some() %}has{% endif %}" id="drop">
+      {% if let Some(ph) = f.photo %}<img src="/uploads/{{ ph }}" alt="Foto saat ini" id="drop-img">{% else %}<img alt="" id="drop-img" hidden>{% endif %}
+      <span class="hint"><span class="ic" data-ic="image" aria-hidden="true"></span><strong>{% if f.photo.is_some() %}Ganti foto{% else %}Unggah foto menu{% endif %}</strong><span class="muted">JPG, PNG, atau WebP · maks 3 MB</span></span>
+      <input type="file" name="photo" accept="image/jpeg,image/png,image/webp" data-preview="drop-img" aria-label="Foto menu">
+    </label>
+    {% if f.photo.is_some() %}<label class="opt gap-top-s"><input type="checkbox" name="remove_photo" value="1"> Hapus foto saat ini</label>{% endif %}
+    <p class="muted small gap-top-s">Foto dikecilkan dan disimpan ulang di server Anda. Rasio 4:3 paling pas.</p>
+  </div>
+  <div class="panel">
+    <div class="field"><label for="iname">Nama menu</label><input id="iname" name="name" required maxlength="80" value="{{ f.name }}" autofocus></div>
+    <div class="field"><label for="icat">Kategori</label><select id="icat" name="category_id" required>{% for c in categories %}<option value="{{ c.id }}" {% if c.id == f.category_id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select></div>
+    <div class="field"><label for="idesc">Deskripsi</label><textarea id="idesc" name="description" rows="3" maxlength="240" placeholder="Misal: Espresso, susu steam, dan gula aren. Disajikan dingin.">{{ f.description }}</textarea><span class="hint-t">Tampil di menu pelanggan. Maksimal 240 karakter.</span></div>
+    <div class="fgrid">
+      <div class="field"><label for="iprice">Harga jual (Rp)</label><input id="iprice" name="price" type="number" min="0" max="100000000" required inputmode="numeric" value="{{ f.price }}" data-margin-price></div>
+      <div class="field"><label for="icost">HPP per porsi (Rp)</label><input id="icost" name="cost" type="number" min="0" max="100000000" inputmode="numeric" value="{{ f.cost }}" data-margin-cost></div>
+      <div class="field"><label for="istock">Stok</label><input id="istock" name="stock" type="number" min="0" max="1000000" inputmode="numeric" value="{{ f.stock }}" placeholder="Tak terbatas"></div>
+    </div>
+    <p class="margin" data-margin hidden></p>
+    <span class="hint-t">Kosongkan stok bila menu tidak dihitung (misal kopi seduh). Menu otomatis habis saat stok 0, dan stok yang diisi lagi membuatnya tersedia.</span>
+    <div class="form-actions"><a class="btn" href="/owner/menu">Batal</a><button class="btn primary" type="submit">Simpan menu</button></div>
+  </div>
+</div>
+</form>
+{% endblock %}

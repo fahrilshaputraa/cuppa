@@ -3591,3 +3591,103 @@ async fn gateway_refund_is_recorded_only_when_the_provider_confirms() {
             .is_err()
     );
 }
+
+fn refs<'a>(v: &'a [(&'static str, String)]) -> Vec<(&'static str, &'a str)> {
+    v.iter().map(|(k, x)| (*k, x.as_str())).collect()
+}
+
+async fn multipart(a: &App, uri: &str, cookie: &str, fields: &[(&str, &str)], photo: Option<Vec<u8>>) -> Res {
+    let b = "XBOUNDARYX";
+    let mut body: Vec<u8> = Vec::new();
+    for (k, v) in fields {
+        body.extend(format!("--{b}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n").as_bytes());
+    }
+    if let Some(p) = photo {
+        body.extend(
+            format!("--{b}\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"a.png\"\r\nContent-Type: image/png\r\n\r\n")
+                .as_bytes(),
+        );
+        body.extend(p);
+        body.extend(b"\r\n");
+    }
+    body.extend(format!("--{b}--\r\n").as_bytes());
+    let mut req = Request::builder()
+        .method("POST")
+        .uri(uri)
+        .header(header::HOST, "localhost:8080")
+        .header(header::ORIGIN, "http://localhost:8080")
+        .header(header::COOKIE, cookie)
+        .header(header::CONTENT_TYPE, format!("multipart/form-data; boundary={b}"))
+        .body(Body::from(body))
+        .unwrap();
+    req.extensions_mut()
+        .insert(ConnectInfo("10.0.0.9:5555".parse::<SocketAddr>().unwrap()));
+    let r = a.app.clone().oneshot(req).await.unwrap();
+    let (p, body) = r.into_parts();
+    Res {
+        status: p.status,
+        headers: p.headers,
+        body: String::from_utf8_lossy(&body.collect().await.unwrap().to_bytes()).into(),
+    }
+}
+
+#[tokio::test]
+async fn item_form_creates_edits_validates_and_rejects_fake_images() {
+    let a = app().await;
+    let owner = setup_owner(&a).await;
+    send(&a, "POST", "/owner/categories", Some(&owner), Some("name=Kopi"), true).await;
+    let cat: String = db_one(&a, "SELECT id FROM categories LIMIT 1").await;
+    let mut png = Vec::new();
+    image::DynamicImage::new_rgb8(8, 8)
+        .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+        .unwrap();
+    let f = |name: &'static str| -> Vec<(&'static str, String)> {
+        vec![
+            ("category_id", cat.clone()),
+            ("name", name.into()),
+            ("description", "Susu dan espresso".into()),
+            ("price", "25000".into()),
+            ("cost", "8000".into()),
+            ("stock", "5".into()),
+        ]
+    };
+    // create with a real image
+    let v = f("Latte");
+    let r = multipart(&a, "/owner/items/new", &owner, &refs(&v), Some(png.clone())).await;
+    assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.body);
+    let id: String = db_one(&a, "SELECT id FROM menu_items WHERE name='Latte'").await;
+    let photo: Option<String> = db_one(&a, "SELECT photo FROM menu_items WHERE name='Latte'").await;
+    assert!(photo.is_some_and(|p| p.ends_with(".jpg")), "stored re-encoded");
+    // edit page and customer menu show description
+    let page = send(&a, "GET", &format!("/owner/items/{id}/edit"), Some(&owner), None, false).await;
+    assert!(page.body.contains("Susu dan espresso"));
+    // a non-image is refused with the form re-rendered, nothing written
+    let v = f("Palsu");
+    let r = multipart(
+        &a,
+        "/owner/items/new",
+        &owner,
+        &refs(&v),
+        Some(b"<script>x</script>".to_vec()),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert!(r.body.contains("bukan gambar"));
+    let n: i64 = db_one(&a, "SELECT COUNT(*) FROM menu_items WHERE name='Palsu'").await;
+    assert_eq!(n, 0);
+    // bad number is refused
+    let mut v = f("Baru");
+    v[3].1 = "abc".into();
+    let r = multipart(&a, "/owner/items/new", &owner, &refs(&v), None).await;
+    assert!(r.body.contains("bukan angka"));
+    // stock 0 marks sold out, restocking makes it available again
+    let mut v = f("Latte");
+    v[5].1 = "0".into();
+    multipart(&a, &format!("/owner/items/{id}/edit"), &owner, &refs(&v), None).await;
+    let av: i64 = db_one(&a, "SELECT available FROM menu_items WHERE name='Latte'").await;
+    assert_eq!(av, 0);
+    v[5].1 = "10".into();
+    multipart(&a, &format!("/owner/items/{id}/edit"), &owner, &refs(&v), None).await;
+    let av: i64 = db_one(&a, "SELECT available FROM menu_items WHERE name='Latte'").await;
+    assert_eq!(av, 1);
+}
