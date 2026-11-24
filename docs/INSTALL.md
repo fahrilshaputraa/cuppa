@@ -60,6 +60,8 @@ Open the café URL in Chrome/Edge → menu → **Install app**. Registered devic
 - **Monthly restore test:** `./cuppa verify-backup data/backups/cuppa-YYYY-MM-DD.db` (checks integrity and shows row counts).
 - Restore: `scripts/restore.sh data/backups/cuppa-YYYY-MM-DD.db`.
 
+Quick printer check without logging in: `./cuppa print-test 192.168.1.50:9100 --drawer`.
+
 ## Troubleshooting
 | Symptom | Fix |
 | --- | --- |

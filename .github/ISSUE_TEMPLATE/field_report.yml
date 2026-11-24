@@ -1,0 +1,21 @@
+name: Field report
+description: Something found while using Cuppa in a real café (printer, drawer, QRIS, tablets, customers)
+labels: [field-test]
+body:
+  - type: dropdown
+    attributes:
+      label: Area
+      options: [Receipt printer, Cash drawer, Kitchen ticket, QRIS gateway, Tablet / PWA, Customer phone, Install / update, Backup / restore, Reports / money, Other]
+    validations: { required: true }
+  - type: textarea
+    attributes: { label: What you did, description: Steps in order }
+    validations: { required: true }
+  - type: textarea
+    attributes: { label: Expected vs what happened }
+    validations: { required: true }
+  - type: input
+    attributes: { label: Hardware / device, description: "e.g. Xprinter XP-N160II over LAN, Samsung Tab A8 Chrome 140" }
+  - type: textarea
+    attributes: { label: Server log (last lines), description: "Remove passwords, keys and personal data first", render: text }
+  - type: markdown
+    attributes: { value: "Security problem? Do not post it here, see SECURITY.md." }

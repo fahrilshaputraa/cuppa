@@ -18,6 +18,29 @@ async fn main() -> anyhow::Result<()> {
             .ok_or_else(|| anyhow::anyhow!("usage: cuppa verify-backup <file.db>"))?;
         return cuppa::backup::verify(path).await;
     }
+    // `cuppa print-test <ip:port> [--drawer]`: talk to a LAN receipt printer directly, no login or database needed.
+    if args.get(1).map(String::as_str) == Some("print-test") {
+        let host = args
+            .get(2)
+            .ok_or_else(|| anyhow::anyhow!("usage: cuppa print-test <ip:port> [--drawer]"))?;
+        let addr = cuppa::escpos::parse_printer(host).map_err(|e| anyhow::anyhow!(e))?;
+        let mut data = vec![0x1b, b'@'];
+        data.extend_from_slice(b"Cuppa - tes cetak\nPrinter terhubung.\nTeks: Rp12.345 ABC abc 123\n\n\n\n");
+        data.extend_from_slice(&[0x1d, b'V', 66, 0]);
+        if args.iter().any(|a| a == "--drawer") {
+            data.extend_from_slice(&cuppa::escpos::drawer_pulse());
+        }
+        cuppa::escpos::send(addr, &data).await?;
+        println!(
+            "Terkirim ke {addr}. Periksa kertas{}.",
+            if args.iter().any(|a| a == "--drawer") {
+                " dan apakah laci kas terbuka"
+            } else {
+                ""
+            }
+        );
+        return Ok(());
+    }
     if args.iter().any(|a| a == "--version" || a == "-V") {
         println!("cuppa {}", env!("CARGO_PKG_VERSION"));
         return Ok(());

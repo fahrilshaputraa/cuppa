@@ -27,6 +27,8 @@ Small cafés lose money in three places: cash leakage (fake voids and discounts,
 - **Money rules** — integer rupiah, price copied into order lines, rounding recorded as its own line, paid orders locked by the database.
 - **Realtime** — Server-Sent Events + HTMX, no JS framework.
 
+Field-testing it in a real café? Follow [docs/FIELD-TEST.md](docs/FIELD-TEST.md) and report with the *Field report* issue template.
+
 Full requirement-by-requirement status: [docs/PRD-COVERAGE.md](docs/PRD-COVERAGE.md).
 
 ## Security by default
