@@ -49,7 +49,7 @@ Honest status of every PRD requirement. ✅ done and tested · 🟡 partial · �
 ## Additional (FR-41 – FR-66)
 | ID | Status | Notes |
 | --- | --- | --- |
-| FR-41–42 | 🟡 | Midtrans QRIS: dynamic QR per order, HMAC-SHA512 signed idempotent webhook, amount check, manual status check/reconciliation, orphaned money flagged for review. Tested against a local mock of the API only — **not yet against a live Midtrans account**. Xendit and gateway refunds are not built (refunds stay manual). |
+| FR-41–42 | 🟡 | Midtrans QRIS: dynamic QR per order, HMAC-SHA512 signed idempotent webhook, amount check, manual status check/reconciliation, orphaned money flagged for review. Tested against a local mock of the API only — **not yet against a live Midtrans account**. Gateway refunds (Midtrans) are built: partial refunds are sent to the provider and recorded locally only if the provider confirms, capped at the amount paid through the gateway. Xendit is not built. |
 | FR-43 | ✅ | Split / mixed payment. |
 | FR-44 | ✅ | Ingredients, recipes, purchases with moving-average cost, opname, waste, immutable movements, actual cost per order. Suppliers are not modelled. |
 | FR-45 | ✅ | Expenses, per-menu cost (manual or recipe), gross and net profit. |

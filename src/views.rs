@@ -363,6 +363,7 @@ pub struct OrderDetail {
     pub refund_left: i64,
     pub merge_options: Vec<(String, String)>,
     pub gateway_on: bool,
+    pub gateway_refundable: bool,
     pub charges: Vec<ChargeView>,
     pub paid_lines: Vec<(String, String)>,
     pub remaining: i64,

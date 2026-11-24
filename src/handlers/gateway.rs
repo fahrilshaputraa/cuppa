@@ -52,7 +52,7 @@ fn parse_amount(s: &str) -> Option<i64> {
     int.parse().ok()
 }
 
-async fn gateway_key(st: &AppState) -> AppResult<Option<String>> {
+pub async fn gateway_key(st: &AppState) -> AppResult<Option<String>> {
     let (provider, enc): (String, Option<String>) =
         sqlx::query_as("SELECT gateway_provider, gateway_key_enc FROM outlet_settings WHERE id = 1")
             .fetch_one(&st.db)
@@ -466,6 +466,66 @@ pub async fn check_charge(State(st): State<AppState>, staff: Staff, Path(cid): P
         Outcome::Unknown => "Transaksi tidak dikenal.",
     };
     orders::render_detail(&st, &staff, &order_id, None, Some(msg.into())).await
+}
+
+/// Ask Midtrans to send money back for a settled QRIS charge (FR-42). `Ok` only when the provider confirms.
+/// `refund_key` makes retries idempotent on the provider side.
+pub async fn refund_charge(
+    conn: &mut sqlx::SqliteConnection,
+    st: &AppState,
+    key: &str,
+    order_id: &str,
+    amount: i64,
+    reason: &str,
+    refund_key: &str,
+) -> Result<(), String> {
+    let charge: Option<(String, i64)> = sqlx::query_as("SELECT provider_order_id, amount FROM gateway_charges WHERE order_id = ? AND status = 'settled' ORDER BY settled_at DESC LIMIT 1")
+        .bind(order_id)
+        .fetch_optional(&mut *conn)
+        .await
+        .map_err(|_| "Database error".to_string())?;
+    let Some((poid, paid)) = charge else {
+        return Err("Tidak ada pembayaran gateway yang bisa di-refund untuk pesanan ini.".into());
+    };
+    let done: i64 =
+        sqlx::query_scalar("SELECT COALESCE(SUM(amount),0) FROM gateway_refunds WHERE provider_order_id = ?")
+            .bind(&poid)
+            .fetch_one(&mut *conn)
+            .await
+            .map_err(|_| "Database error".to_string())?;
+    if amount + done > paid {
+        return Err("Nominal melebihi sisa pembayaran gateway yang bisa di-refund.".into());
+    }
+    let resp = http()
+        .post(format!(
+            "{}/v2/{}/refund",
+            st.cfg.midtrans_base.trim_end_matches('/'),
+            poid
+        ))
+        .basic_auth(key, Some(""))
+        .json(&json!({"refund_key": refund_key, "amount": amount, "reason": reason}))
+        .send()
+        .await
+        .map_err(|_| "Gateway tidak dapat dihubungi. Refund belum dicatat.".to_string())?;
+    let v: Value = resp.json().await.unwrap_or(Value::Null);
+    if v.get("status_code").and_then(Value::as_str) != Some("200") {
+        tracing::warn!(response = %v, "gateway refund rejected");
+        return Err(
+            "Gateway menolak refund. Refund belum dicatat; lakukan manual dan catat tanpa opsi gateway.".into(),
+        );
+    }
+    sqlx::query(
+        "INSERT INTO gateway_refunds (id, provider_order_id, refund_key, amount, created_at) VALUES (?,?,?,?,?)",
+    )
+    .bind(rand_id::id())
+    .bind(&poid)
+    .bind(refund_key)
+    .bind(amount)
+    .bind(clock::now())
+    .execute(&mut *conn)
+    .await
+    .map_err(|_| "Refund berhasil di gateway tetapi gagal dicatat lokal. Periksa log audit.".to_string())?;
+    Ok(())
 }
 
 // ---- Outgoing webhooks (FR-62) -----------------------------------------------------------------

@@ -407,6 +407,11 @@ pub async fn render_detail(
             }
         })
         .collect();
+    let gateway_refundable: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM gateway_charges WHERE order_id = ? AND status = 'settled')")
+            .bind(id)
+            .fetch_one(&mut *c)
+            .await?;
     let (label, class) = status_meta(&o.status);
     let editable = matches!(o.status.as_str(), "pending" | "confirmed" | "ready");
     let page = OrderDetail {
@@ -447,6 +452,7 @@ pub async fn render_detail(
         editable,
         can_discount: staff.can(Perm::Discount) && editable,
         can_refund: staff.can(Perm::Refund) && o.status == "paid",
+        gateway_refundable,
         discount_limit_pct: pct_text(settings.cashier_discount_max_bp),
         tables,
         refunded: rupiah(refunded),
@@ -1033,6 +1039,7 @@ pub async fn void(
 
 #[derive(Deserialize)]
 pub struct RefundForm {
+    via_gateway: Option<String>,
     amount: i64,
     reason: String,
     approver: String,
@@ -1087,6 +1094,18 @@ pub async fn refund(
             .fetch_one(&mut *tx)
             .await?;
     let cash_part = f.amount.min((cash_paid - cash_out_done).max(0));
+    if f.via_gateway.is_some() {
+        let Some(key) = super::gateway::gateway_key(&st).await? else {
+            drop(tx);
+            return render_detail(&st, &staff, &id, Some("Gateway belum diatur.".into()), None).await;
+        };
+        // The refund document id doubles as the provider's idempotency key.
+        let refund_key = format!("refund-{}-{}", o.number, rand_id::hex_token(6));
+        if let Err(msg) = super::gateway::refund_charge(&mut tx, &st, &key, &id, f.amount, &reason, &refund_key).await {
+            drop(tx);
+            return render_detail(&st, &staff, &id, Some(msg), None).await;
+        }
+    }
     let now = clock::now();
     let rid = rand_id::id();
     sqlx::query(

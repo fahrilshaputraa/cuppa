@@ -82,6 +82,7 @@
         <div class="field"><label for="rr">Alasan</label><input id="rr" name="reason" required maxlength="160"></div>
         <div class="row"><div class="field"><label for="rn">Nama owner penyetuju</label><input id="rn" name="approver" required maxlength="60" autocomplete="off"></div>
         <div class="field"><label for="rs">Kata sandi owner</label><input id="rs" name="secret" type="password" required maxlength="128" autocomplete="off"></div></div>
+        {% if gateway_refundable %}<div class="field"><label><input type="checkbox" name="via_gateway" value="1"> Kembalikan lewat gateway (dana dikirim balik ke pelanggan)</label></div>{% endif %}
         <button class="btn danger" type="submit">Catat refund</button>
       </form></details>
     {% endif %}

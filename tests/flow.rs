@@ -3029,6 +3029,14 @@ async fn mock_midtrans() -> (String, Arc<Mutex<String>>) {
             }),
         )
         .route(
+            "/v2/{id}/refund",
+            axum::routing::post(|axum::Json(v): axum::Json<serde_json::Value>| async move {
+                // The mock refuses refunds whose reason contains FAIL, like a provider-side rejection.
+                let ok = !v["reason"].as_str().unwrap_or("").contains("FAIL") && v["refund_key"].as_str().is_some();
+                axum::Json(serde_json::json!({"status_code": if ok { "200" } else { "412" }, "status_message": "mock"}))
+            }),
+        )
+        .route(
             "/v2/{id}/status",
             axum::routing::get(move |axum::extract::Path(id): axum::extract::Path<String>| {
                 let s = s2.clone();
@@ -3489,4 +3497,97 @@ async fn english_applies_to_public_pages_only_and_is_a_cookie_choice() {
     // Staff screens stay Indonesian even with the cookie.
     let staff = send(&a, "GET", "/owner", Some(&format!("{owner}; lang=en")), None, false).await;
     assert!(staff.body.contains("Ringkasan") && staff.body.contains("lang=\"id\""));
+}
+
+#[tokio::test]
+async fn gateway_refund_is_recorded_only_when_the_provider_confirms() {
+    let (a, _) = app_with_gateway().await;
+    let owner = setup_owner(&a).await;
+    let (oid, cashier, _) = confirmed_order(&a, &owner, 2).await; // 55.000
+    let key = "SB-key";
+    send(
+        &a,
+        "POST",
+        "/owner/integrations",
+        Some(&owner),
+        Some(&format!("provider=midtrans&server_key={key}")),
+        true,
+    )
+    .await;
+    send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/gateway/qris"),
+        Some(&cashier),
+        Some(""),
+        true,
+    )
+    .await;
+    // The checkbox is not offered before the QRIS is settled.
+    assert!(
+        !send(&a, "GET", &format!("/orders/{oid}"), Some(&owner), None, false)
+            .await
+            .body
+            .contains("via_gateway")
+    );
+    let poid: String = db_one(&a, "SELECT provider_order_id FROM gateway_charges").await;
+    webhook(&a, serde_json::json!({"order_id": poid, "status_code": "200", "gross_amount": "55000.00", "transaction_status": "settlement", "fraud_status": "accept", "signature_key": sig(&poid, "200", "55000.00", key)})).await;
+    assert_eq!(db_one::<String>(&a, "SELECT status FROM orders").await, "paid");
+    assert!(
+        send(&a, "GET", &format!("/orders/{oid}"), Some(&owner), None, false)
+            .await
+            .body
+            .contains("via_gateway")
+    );
+    let form = |amount: i64, reason: &str| {
+        format!("amount={amount}&reason={reason}&approver=Ana&secret=correct+horse+battery&via_gateway=1")
+    };
+    // Provider rejects: nothing is recorded locally.
+    let rej = send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/refund"),
+        Some(&owner),
+        Some(&form(10_000, "FAIL+test")),
+        true,
+    )
+    .await;
+    assert!(rej.body.contains("menolak"), "{}", rej.body);
+    assert_eq!(db_one::<i64>(&a, "SELECT COUNT(*) FROM refunds").await, 0);
+    assert_eq!(db_one::<i64>(&a, "SELECT COUNT(*) FROM gateway_refunds").await, 0);
+    // Provider accepts: refund document + gateway refund record, no cash leaves the drawer.
+    let ok = send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/refund"),
+        Some(&owner),
+        Some(&form(20_000, "salah+pesan")),
+        true,
+    )
+    .await;
+    assert!(ok.body.contains("Refund dicatat"), "{}", ok.body);
+    assert_eq!(db_one::<i64>(&a, "SELECT amount FROM refunds").await, 20_000);
+    assert_eq!(db_one::<i64>(&a, "SELECT amount FROM gateway_refunds").await, 20_000);
+    assert_eq!(
+        db_one::<i64>(&a, "SELECT COUNT(*) FROM cash_movements WHERE kind = 'out'").await,
+        0
+    );
+    // Cannot refund more than was paid through the gateway.
+    let over = send(
+        &a,
+        "POST",
+        &format!("/orders/{oid}/refund"),
+        Some(&owner),
+        Some(&form(40_000, "lagi")),
+        true,
+    )
+    .await;
+    assert!(over.body.contains("melebihi"), "{}", over.body);
+    assert_eq!(db_one::<i64>(&a, "SELECT COUNT(*) FROM refunds").await, 1);
+    assert!(
+        sqlx::query("DELETE FROM gateway_refunds")
+            .execute(&a.st.db)
+            .await
+            .is_err()
+    );
 }

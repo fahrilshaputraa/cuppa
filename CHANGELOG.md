@@ -17,5 +17,6 @@ Format: [Keep a Changelog](https://keepachangelog.com), versioning: [SemVer](htt
 - Recipes and ingredient stock (purchases, opname, waste), per-menu ratings, busy mode, floor plan, order merge, read-only API keys, in-app ledger.
 - Installable PWA (manifest, icons, service worker), Midtrans QRIS gateway with signed idempotent webhooks, encrypted credentials, signed outgoing webhooks, scheduled prices.
 - Custom CSS and HTML banner with strict sanitisation; Indonesian/English for customer pages.
+- Refund through the payment gateway (recorded only when the provider confirms); `build.rs` recompiles when migrations change.
 - Safe operations: snapshot before migrations, `verify-backup`, restore script, install guide, nginx/systemd samples, `docs/PRD-COVERAGE.md`.
 - DESIGN.md design system, CI (fmt, clippy, test, cargo-deny, RustSec), Dockerfile.
